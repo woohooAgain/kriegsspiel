@@ -1,0 +1,62 @@
+{
+  "id": "test_01",
+  "name": "Тест: один батальон, одна высота",
+  "startMinute": 360,
+  "endMinute": 480,
+  "zones": [
+    {
+      "id": "START",
+      "name": "Исходный рубеж",
+      "terrain": "Open",
+      "travelMinutes": { "OBJ": 30 },
+      "defenseBonus": 0,
+      "observation": 2
+    },
+    {
+      "id": "OBJ",
+      "name": "Высота 4.2",
+      "terrain": "Open",
+      "travelMinutes": { "START": 30 },
+      "defenseBonus": 1,
+      "observation": 2
+    }
+  ],
+  "units": [
+    {
+      "id": "HQ",
+      "name": "Штаб",
+      "type": "HQ",
+      "strength": 5, "readiness": 100, "morale": 100,
+      "fatigue": 0, "ammo": 0,
+      "locationZoneId": "START",
+      "posture": "Reserve",
+      "speedKmh": 6,
+      "traits": { "initiative": 1, "caution": 1, "literalism": 1, "reportHonesty": 3 }
+    },
+    {
+      "id": "1IR",
+      "name": "1-й батальон",
+      "type": "Infantry",
+      "strength": 50, "readiness": 80, "morale": 80,
+      "fatigue": 0, "ammo": 100,
+      "locationZoneId": "START",
+      "posture": "Reserve",
+      "speedKmh": 4,
+      "traits": { "initiative": 1, "caution": 1, "literalism": 2, "reportHonesty": 2 }
+    },
+    {
+      "id": "ENEMY_1",
+      "name": "Застава противника",
+      "type": "Infantry",
+      "strength": 20, "readiness": 70, "morale": 70,
+      "fatigue": 0, "ammo": 80,
+      "locationZoneId": "OBJ",
+      "posture": "Defend",
+      "speedKmh": 4,
+      "traits": { "initiative": 0, "caution": 2, "literalism": 1, "reportHonesty": 0 }
+    }
+  ],
+  "objectives": [
+    { "type": "HoldZone", "zone": "OBJ", "untilMinute": 480, "weight": 1.0 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "courierBaseDelayMinutes": 25,
+  "fieldCourierDelayMinutes": 15,
+  "courierLostBase": 0.05,
+  "courierLostPerKm": 0.01,
+  "courierLostHostileBonus": 0.10,
+  "ambiguityWeight": 0.8,
+  "literalismWeight": 0.15,
+  "cautionWeight": 0.10,
+  "initiativeWeight": 0.25,
+  "combatLethality": 0.35,
+  "reportBaseDelayMinutes": 20,
+  "reportJitterMinutes": 20,
+  "strengthReportNoise": 0.25
+}

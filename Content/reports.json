@@ -1,0 +1,9 @@
+{
+  "byKind": {
+    "Status": ["{unit}: в {zone}, силы ~{strength}%."],
+    "Request": ["{unit}: уточните задачу."],
+    "Contact": ["Слышна стрельба в {zone}."],
+    "CombatResult": ["{unit}: бой, потери."],
+    "Arrival": ["{unit}: прибыл в {zone}."]
+  }
+}

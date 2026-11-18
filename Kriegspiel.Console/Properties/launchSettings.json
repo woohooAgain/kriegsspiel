@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Kriegsspiel.Console": {
+      "commandName": "Project",
+      "commandLineArgs": "--Scenario test_01"
+    }
+  }
+}

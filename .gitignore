@@ -1,0 +1,51 @@
+# Результаты сборки и временные файлы
+[Bb]in
+[Oo]bj
+[Ll]og
+[Ll]ogs
+.dll
+.exe
+.pdb
+.cache
+.nupkg
+.snupkg
+.binlog
+
+# Файлы пользователей и кэш IDE (Visual Studio, Rider, VS Code)
+.vs
+.idea
+.vscode
+!.vscodesettings.json
+!.vscodetasks.json
+!.vscodelaunch.json
+!.vscodeextensions.json
+.user
+.userosscache
+.suo
+.rsuser
+.sln.docstates
+_ReSharper
+.DotSettings.user
+
+# Тесты и публикации
+[Tt]est[Rr]esult
+.trx
+.coverage
+.coveragexml
+publish
+.publishproj
+.pubxml
+
+# Локальные базы данных и секреты
+.mdf
+.ldf
+.sqlite
+.db
+appsettings..json
+!appsettings.json
+!appsettings.Development.json
+.env
+
+# Файлы ОС
+.DS_Store
+Thumbs.db
