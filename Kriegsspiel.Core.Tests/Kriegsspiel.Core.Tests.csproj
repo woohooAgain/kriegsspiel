@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Kriegspiel.Core\Kriegspiel.Core.csproj" />
+    <ProjectReference Include="..\Kriegsspiel.Core\Kriegsspiel.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

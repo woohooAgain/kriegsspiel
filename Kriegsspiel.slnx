@@ -2,7 +2,7 @@
   <Folder Name="/Solution Items/">
     <File Path="appsettings.json" />
   </Folder>
-  <Project Path="Kriegspiel.Console/Kriegsspiel.Console.csproj" />
-  <Project Path="Kriegspiel.Core.Tests/Kriegspiel.Core.Tests.csproj" />
-  <Project Path="Kriegspiel.Core/Kriegspiel.Core.csproj" />
+  <Project Path="Kriegsspiel.Console/Kriegsspiel.Console.csproj" />
+  <Project Path="Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj" />
+  <Project Path="Kriegsspiel.Core/Kriegsspiel.Core.csproj" />
 </Solution>
