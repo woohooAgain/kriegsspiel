@@ -49,3 +49,7 @@ appsettings..json
 # Файлы ОС
 .DS_Store
 Thumbs.db
+
+# Временные файлы процесса (ввод implementer)
+docs/projectDocs/reports/.tmp/*
+!docs/projectDocs/reports/.tmp/README.md
