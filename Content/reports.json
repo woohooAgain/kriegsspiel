@@ -1,9 +1,30 @@
 {
   "byKind": {
-    "Status": ["{unit}: в {zone}, силы ~{strength}%."],
-    "Request": ["{unit}: уточните задачу."],
-    "Contact": ["Слышна стрельба в {zone}."],
-    "CombatResult": ["{unit}: бой, потери."],
-    "Arrival": ["{unit}: прибыл в {zone}."]
+    "Status": [
+      "[{eventTime}/{deliveryTime}] {source}: {unit} в {zone}, силы ~{strength}%, уверенность {confidence}."
+    ],
+    "Request": [
+      "[{eventTime}/{deliveryTime}] {source}: {unit} запрашивает уточнение задачи (уверенность {confidence})."
+    ],
+    "Contact": [
+      "[{eventTime}/{deliveryTime}] {source}: контакт в {zone}, факт {factKey}, уверенность {confidence}."
+    ],
+    "CombatResult": [
+      "[{eventTime}/{deliveryTime}] {source}: {unit} сообщает о бое в {zone}, потери {losses}, уверенность {confidence}."
+    ],
+    "Arrival": [
+      "[{eventTime}/{deliveryTime}] {source}: {unit} прибыл в {zone}, уверенность {confidence}."
+    ],
+    "Impossible": [
+      "[{eventTime}/{deliveryTime}] {source}: {unit} не может выполнить приказ в {zone}, причина: {status}, уверенность {confidence}."
+    ]
+  },
+  "placeholders": {
+    "Status": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "strength", "morale", "ammo", "readiness", "fatigue", "factKey"],
+    "Request": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "factKey"],
+    "Contact": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "targetUnitId", "targetUnit", "factKey", "status"],
+    "CombatResult": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "strength", "losses", "morale", "ammo", "factKey"],
+    "Arrival": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "factKey"],
+    "Impossible": ["eventMinute", "eventTime", "deliveryMinute", "deliveryTime", "sourceId", "source", "confidence", "kind", "zoneId", "zone", "unitId", "unit", "status", "factKey"]
   }
 }
