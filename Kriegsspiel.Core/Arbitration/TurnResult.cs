@@ -1,4 +1,5 @@
-﻿using Kriegsspiel.Core.Domain;
+using Kriegsspiel.Core.Domain;
+
 namespace Kriegsspiel.Core.Arbitration;
 
 public sealed record TurnResult(IReadOnlyList<Report> NewReports, int Now);
