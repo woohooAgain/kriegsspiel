@@ -128,7 +128,7 @@ public sealed class ContentLoaderTests : IDisposable
     public void Load_InvalidEnum_ThrowsValidation()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root => root["zones"]![0]!["edgeTypes"]!["B"] = "Hyperloop"));
+            LoadWith(scenarioMutator: root => root["zones"]![0]!["edgeTypes"]!["B3"] = "Hyperloop"));
         Assert.Contains("invalid", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
