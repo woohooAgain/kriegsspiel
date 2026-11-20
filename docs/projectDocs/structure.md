@@ -17,16 +17,34 @@ Kriegsspiel/
 ├── docs/                                       # Документация проекта.
 │   ├── gameDocs/                               # Игровая документация.
 │   │   ├── featureBacklog.md                   # Бэклог идей и предложений по механикам.
+│   │   ├── featureSpecs/                       # Бизнес-спецификации фич (FS-*), готовит analyst.
+│   │   │   └── README.md                       # Правила и шаблон оформления FS-*.
 │   │   └── rules.md                            # Канонические правила игры.
 │   └── projectDocs/                            # Проектная и процессная документация.
 │       ├── instructions.md                     # Фактические конвенции разработки и проверки.
-│       ├── reports/                            # Отчёты по задачам и волнам, временный ввод implementer.
-│       │   ├── README.md                       # Шаблоны и правила оформления отчётов.
-│       │   ├── .tmp/                           # Временные файлы ввода implementer (игнорируются git, удаляются перед передачей).
+│       ├── process-improvement-log.md          # Сквозной журнал процессных мер (PI-*), ведёт process-master.
+│       ├── reports/                            # Канонические отчёты, file-first handoff и локальные черновики.
+│       │   ├── README.md                       # Шаблоны, ownership и правила отчётов/handoff.
+│       │   ├── handoffs/                       # Структурированные handoff-артефакты (file-first).
+│       │   │   └── README.md                   # Правила именования и использования handoff-файлов.
+│       │   ├── .tmp/                           # Локальные gitignored черновики (не транспорт процесса).
+│       │   │   └── README.md                   # Назначение каталога локальных черновиков.
 │       │   ├── task-T-01-domain-and-contracts.md # Отчёт по задаче T-01.
 │       │   ├── task-T-02-clock-and-event-ordering.md # Отчёт по задаче T-02.
 │       │   ├── task-T-03-content-profile-and-validation.md # Отчёт по задаче T-03.
-│       │   └── wave-0-report.md                # Отчёт по волне 0.
+│       │   ├── task-T-10-couriers-and-transmission.md # Отчёт по задаче T-10.
+│       │   ├── task-T-11-orders-ambiguity-understanding.md # Отчёт по задаче T-11.
+│       │   ├── task-T-12-execution-and-routing.md # Отчёт по задаче T-12.
+│       │   ├── task-T-13-combat-and-contact-geometry.md # Отчёт по задаче T-13.
+│       │   ├── task-T-14-reports-fog-and-recon.md # Отчёт по задаче T-14.
+│       │   ├── task-T-15-objectives-and-aar.md # Отчёт по задаче T-15.
+│       │   ├── task-T-16-persistence-dto-and-load.md # Отчёт по задаче T-16.
+│       │   ├── task-T-17-ai-llm-adapter.md    # Отчёт по задаче T-17.
+│       │   ├── task-T-18-enemy-doctrine.md     # Отчёт по задаче T-18.
+│       │   ├── task-T-20-arbiter-integration.md # Отчёт по задаче T-20.
+│       │   ├── wave-0-report.md                # Отчёт по волне 0.
+│       │   ├── wave-1-report.md                # Отчёт по волне 1.
+│       │   └── wave-2-report.md                # Отчёт по волне 2.
 │       ├── structure.md                        # Описание структуры репозитория и назначения файлов.
 │       ├── tech-debt.md                        # Активный список технического долга.
 │       ├── tech-debt-archive.md                # Архив закрытых записей технического долга.
@@ -35,14 +53,17 @@ Kriegsspiel/
 │       │   └── taskDecompositionTemplate.md    # Шаблон декомпозиции работ на задачи и волны.
 │       └── workflows/                          # Описание процессов и промпты ролей.
 │           ├── README.md                       # Обзор процесса оркестрации и правил выполнения.
-│           ├── task-lifecycle.md               # Жизненный цикл задачи, роли и переходы.
+│           ├── task-lifecycle.md               # Жизненный цикл фичи, задачи, волны и роли.
 │           └── prompts/                        # Промпты для ролей процесса.
-│               ├── implementer-take-task.md   # Промпт для роли реализации задачи.
-│               ├── orchestrator-kickoff.md     # Промпт для запуска и координации цикла.
-│               ├── architect-decompose.md      # Промпт для декомпозиции, сценария проверок волны и triage.
-│               ├── scenario-tester-run.md      # Промпт для интеграционного/сценарного прогона.
+│               ├── analyst-feature-spec.md     # Промпт для подготовки FS-* и разрешения неоднозначностей.
+│               ├── architect-decompose.md      # Промпт для декомпозиции, сценария/launch-плана и triage.
+│               ├── implementer-take-task.md   # Промпт для реализации задачи и file-first handoff.
+│               ├── orchestrator-kickoff.md     # Промпт для дирижирования цикла (статусы/refs).
+│               ├── process-master-wave-retro.md # Промпт для ретро волны и процессных мер (PI-*).
+│               ├── rules-auditor-audit.md      # Промпт для аудита правил, противоречий и ребаланса.
+│               ├── scenario-tester-run.md      # Промпт для сценарных/интеграционных прогонов.
 │               ├── tech-debt-intake.md         # Промпт для фиксации находок в техдолг.
-│               └── verifier-review.md          # Промпт для проверки, верификации и отчётности.
+│               └── verifier-review.md          # Промпт для gate, верификации, merge и отчётности.
 ├── Kriegsspiel.Console/                        # Консольное приложение и точка входа.
 │   ├── Kriegsspiel.Console.csproj              # Проект консольного приложения.
 │   ├── Program.cs                              # Точка входа приложения.
