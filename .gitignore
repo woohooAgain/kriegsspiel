@@ -1,55 +1,66 @@
-# Результаты сборки и временные файлы
-[Bb]in
-[Oo]bj
-[Ll]og
-[Ll]ogs
-.dll
-.exe
-.pdb
-.cache
-.nupkg
-.snupkg
-.binlog
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+**/bin/
+**/obj/
 
-# Файлы пользователей и кэш IDE (Visual Studio, Rider, VS Code)
-.vs
-.idea
-.vscode
-!.vscodesettings.json
-!.vscodetasks.json
-!.vscodelaunch.json
-!.vscodeextensions.json
-.user
-.userosscache
-.suo
-.rsuser
-.sln.docstates
-_ReSharper
-.DotSettings.user
+## Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vscode/
 
-# Тесты и публикации
-[Tt]est[Rr]esult
-.trx
-.coverage
-.coveragexml
-publish
-.publishproj
-.pubxml
+## .NET
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*.dll
+*.exe
+*.pdb
+*.cache
 
-# Локальные базы данных и секреты
-.mdf
-.ldf
-.sqlite
-.db
+## Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+## Publish
+publish/
+
+## Local data / secrets
+*.db
+*.sqlite
+*.sqlite3
 appsettings..json
+appsettings.*.local.json
 !appsettings.json
 !appsettings.Development.json
 .env
 
-# Файлы ОС
+## Saves
+saves/
+
+## OS
 .DS_Store
 Thumbs.db
 
-# Временные файлы процесса (ввод implementer)
 docs/projectDocs/reports/.tmp/*
 !docs/projectDocs/reports/.tmp/README.md
