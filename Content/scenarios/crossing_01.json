@@ -3,30 +3,109 @@
   "name": "Переправа у Мельницы",
   "startMinute": 360,
   "endMinute": 720,
+  "seed": 1001,
+  "victoryThreshold": 0.7,
   "zones": [
-    { "id": "B2", "name": "Исходный рубеж", "terrain": "Open",
-      "travelMinutes": { "B3": 20 }, "defenseBonus": 0, "observation": 2 },
-    { "id": "B3", "name": "Мост у Мельницы", "terrain": "Bridge",
-      "travelMinutes": { "B2": 20, "B4": 25 }, "defenseBonus": 2, "observation": 2 },
-    { "id": "B4", "name": "Лес восточнее моста", "terrain": "Forest",
-      "travelMinutes": { "B3": 25 }, "defenseBonus": 3, "observation": 0 }
+    {
+      "id": "B2",
+      "name": "Исходный рубеж",
+      "terrain": "Open",
+      "travelMinutes": { "B3": 20 },
+      "edgeTypes": { "B3": "Road" },
+      "defenseBonus": 0,
+      "observation": 2,
+      "controllingFaction": "Blue",
+      "cover": 0.1,
+      "objects": [],
+      "cargo": []
+    },
+    {
+      "id": "B3",
+      "name": "Мост у Мельницы",
+      "terrain": "Bridge",
+      "travelMinutes": { "B2": 20, "B4": 25 },
+      "edgeTypes": { "B2": "Road", "B4": "Crossing" },
+      "defenseBonus": 2,
+      "observation": 2,
+      "controllingFaction": "Neutral",
+      "cover": 0.2,
+      "objects": [
+        { "id": "BRIDGE_B3", "kind": "Bridge", "name": "Мост" }
+      ],
+      "cargo": []
+    },
+    {
+      "id": "B4",
+      "name": "Лес восточнее моста",
+      "terrain": "Forest",
+      "travelMinutes": { "B3": 25 },
+      "edgeTypes": { "B3": "Crossing" },
+      "defenseBonus": 3,
+      "observation": 0,
+      "controllingFaction": "Red",
+      "cover": 0.5,
+      "objects": [],
+      "cargo": []
+    }
   ],
   "units": [
-    { "id": "12IR", "name": "12-й пехотный полк", "type": "Infantry",
-      "strength": 80, "readiness": 85, "morale": 70, "fatigue": 0, "ammo": 90,
-      "locationZoneId": "B2", "posture": "March", "speedKmh": 4,
-      "traits": { "initiative": 2, "caution": 1, "literalism": 2, "reportHonesty": 1 } },
-    { "id": "HQ", "name": "Штаб корпуса", "type": "HQ",
-      "strength": 10, "readiness": 100, "morale": 100, "fatigue": 0, "ammo": 0,
-      "locationZoneId": "B2", "posture": "Reserve", "speedKmh": 6,
-      "traits": { "initiative": 1, "caution": 1, "literalism": 1, "reportHonesty": 3 } },
-    { "id": "ENEMY_3BN", "name": "3-й батальон противника", "type": "Infantry",
-      "strength": 60, "readiness": 80, "morale": 75, "fatigue": 0, "ammo": 80,
-      "locationZoneId": "B4", "posture": "Defend", "speedKmh": 4,
-      "traits": { "initiative": 1, "caution": 2, "literalism": 1, "reportHonesty": 0 } }
+    {
+      "id": "12IR",
+      "name": "12-й пехотный полк",
+      "type": "Infantry",
+      "faction": "Blue",
+      "strength": 80,
+      "initialStrengthSnapshot": 80,
+      "readiness": 85,
+      "morale": 70,
+      "fatigue": 0,
+      "ammo": 90,
+      "training": 2,
+      "experience": 2,
+      "locationZoneId": "B2",
+      "posture": "March",
+      "speedKmh": 4,
+      "traits": { "initiative": 2, "caution": 1, "literalism": 2, "reportHonesty": 1, "professionalism": 2 }
+    },
+    {
+      "id": "HQ",
+      "name": "Штаб корпуса",
+      "type": "HQ",
+      "faction": "Blue",
+      "strength": 10,
+      "initialStrengthSnapshot": 10,
+      "readiness": 100,
+      "morale": 100,
+      "fatigue": 0,
+      "ammo": 0,
+      "training": 3,
+      "experience": 3,
+      "locationZoneId": "B2",
+      "posture": "Reserve",
+      "speedKmh": 6,
+      "traits": { "initiative": 1, "caution": 1, "literalism": 1, "reportHonesty": 3, "professionalism": 3 }
+    },
+    {
+      "id": "ENEMY_3BN",
+      "name": "3-й батальон противника",
+      "type": "Infantry",
+      "faction": "Red",
+      "strength": 60,
+      "initialStrengthSnapshot": 60,
+      "readiness": 80,
+      "morale": 75,
+      "fatigue": 0,
+      "ammo": 80,
+      "training": 2,
+      "experience": 2,
+      "locationZoneId": "B4",
+      "posture": "Defend",
+      "speedKmh": 4,
+      "traits": { "initiative": 1, "caution": 2, "literalism": 1, "reportHonesty": 0, "professionalism": 2 }
+    }
   ],
   "objectives": [
-    { "type": "HoldZone", "zone": "B3", "untilMinute": 660, "weight": 0.6 },
+    { "type": "HoldZone", "zone": "B3", "untilMinute": 660, "controlMinutes": [540, 600, 660], "weight": 0.6 },
     { "type": "PreserveStrength", "unit": "12IR", "minPercent": 60, "weight": 0.4 }
   ]
 }

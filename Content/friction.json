@@ -1,15 +1,152 @@
 {
-  "courierBaseDelayMinutes": 25,
-  "fieldCourierDelayMinutes": 15,
-  "courierLostBase": 0.05,
-  "courierLostPerKm": 0.01,
-  "courierLostHostileBonus": 0.10,
-  "ambiguityWeight": 0.8,
-  "literalismWeight": 0.15,
-  "cautionWeight": 0.10,
-  "initiativeWeight": 0.25,
-  "combatLethality": 0.35,
-  "reportBaseDelayMinutes": 20,
-  "reportJitterMinutes": 20,
-  "strengthReportNoise": 0.25
+  "hq": {
+    "couriers": 2,
+    "courierReplacementMinutes": 60,
+    "defaultDeliveryTimeMinutes": 25,
+    "defaultReturnTimeMinutes": 25,
+    "courierLossBase": 0.05,
+    "courierLossPerKm": 0.01,
+    "courierLossHostileBonus": 0.1,
+    "reportLossBase": 0.03
+  },
+  "orders": {
+    "p0": 0.03,
+    "pMin": 0.03,
+    "pMax": 0.9,
+    "pMinModifierType": "Additive",
+    "ambiguity": {
+      "missingTarget": 0.7,
+      "vagueFormulation": 0.25,
+      "missingDeadline": 0.1,
+      "missingReportTime": 0.1,
+      "perBranch": 0.05
+    },
+    "traits": {
+      "literalism": 0.15,
+      "caution": 0.1,
+      "initiative": 0.1
+    },
+    "maxBranches": 3
+  },
+  "movement": {
+    "march": {
+      "timeMultiplier": 1.0,
+      "detectability": 0.2,
+      "readinessDelta": -5,
+      "fatigueDelta": 5,
+      "position": "March"
+    },
+    "stealth": {
+      "timeMultiplier": 1.4,
+      "detectability": -0.1,
+      "readinessDelta": -3,
+      "fatigueDelta": 8,
+      "position": "March"
+    },
+    "contactReady": {
+      "timeMultiplier": 1.2,
+      "detectability": 0.1,
+      "readinessDelta": 0,
+      "fatigueDelta": 6,
+      "position": "AttackDefense"
+    }
+  },
+  "combat": {
+    "lethalitySelf": 0.35,
+    "lethalityEnemy": 0.35,
+    "position": {
+      "march": 0.5,
+      "attack": 1.0,
+      "defense": 1.3
+    },
+    "collision": {
+      "front": 1.0,
+      "flank": 1.4,
+      "rear": 1.8
+    },
+    "terrainDefenseFactor": 0.1,
+    "moraleLossPerTenPercentStrength": 5.0,
+    "combatEffective": {
+      "strengthRatio": 0.4,
+      "morale": 30,
+      "readiness": 20,
+      "ammo": 1,
+      "panicMorale": 30
+    },
+    "captureBaseChance": 0.2,
+    "captureEncircledBonus": 0.2,
+    "captureInitiativePenalty": 0.05,
+    "entrenchmentRatePerStep": 0.1,
+    "entrenchmentCap": 1.0,
+    "poorControl": {
+      "positionMultiplier": 0.85,
+      "collisionMultiplier": 0.85,
+      "moraleStabilityMultiplier": 0.9,
+      "lossMultiplier": 1.1
+    },
+    "ammoConsumptionPerTick": 5.0,
+    "flankMoralePenalty": 10,
+    "rearMoralePenalty": 15
+  },
+  "recon": {
+    "detectionBase": 0.2,
+    "detectionObservabilityWeight": 0.15,
+    "opDetectionBonus": 0.0,
+    "camouflageStealthBonus": 0.15,
+    "detectionMin": 0.05,
+    "detectionMax": 0.95,
+    "successBase": 0.5,
+    "unconsciousFailBase": 0.3,
+    "unconsciousFailCap": 0.8,
+    "factKeyWindowMinutes": 30
+  },
+  "reports": {
+    "baseDelayMinutes": 20,
+    "jitterMinutes": 20,
+    "strengthNoise": 0.25,
+    "honestyDistortionPerLevel": 0.15,
+    "observerError": 0.1,
+    "querySilenceMinutes": 60,
+    "impossibleReactionPenaltyMinutes": 30
+  },
+  "supply": {
+    "cargoToAmmoCoefficient": 1.0,
+    "consumersPerResupply": 1,
+    "ammoCeiling": 100
+  },
+  "capture": {
+    "convoySpeedMultiplier": 0.7,
+    "convoyOffroadMultiplier": 0.5,
+    "escapeChanceBase": 0.05,
+    "escapeChancePerGuardDeficit": 0.05,
+    "noPrisonersCaptureReduction": 1.0,
+    "noPrisonersLoyaltyPenalty": 0.2,
+    "interrogationMinMinutes": 30,
+    "interrogationMaxMinutes": 60
+  },
+  "civilians": {
+    "rumorCredibilityMax": 1.0,
+    "falseReportBase": 0.2,
+    "panicRoadMultiplierBase": 1.0,
+    "panicRoadMultiplierPerLevel": 0.1,
+    "coercionLoyaltyPenalty": 0.1,
+    "protectionLoyaltyBonus": 0.1,
+    "lootingLoyaltyPenalty": 0.2,
+    "panicIncreaseOnCombat": 0.1,
+    "panicThresholds": [0.3, 0.6, 0.9],
+    "loyaltyThresholds": [0.33, 0.66]
+  },
+  "llm": {
+    "enabled": false,
+    "schemaVersion": "1.0",
+    "fallbackMode": "DoctrineTemplate",
+    "logPrompts": true
+  },
+  "difficultyProfiles": [
+    {
+      "id": "standard",
+      "name": "Standard",
+      "modifiers": {}
+    }
+  ]
 }
