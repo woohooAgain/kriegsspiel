@@ -1,4 +1,4 @@
-﻿using Kriegsspiel.Core.Content;
+using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Domain;
 
 namespace Kriegsspiel.Core.Arbitration;
