@@ -11,7 +11,6 @@ public enum ReportKind
     Arrival = 4,
     Impossible = 5,
     QueryAnswer = 6,
-    QueryResponse = 6,
     Silence = 7,
     Recon = 8,
     CivilianRumor = 9,
