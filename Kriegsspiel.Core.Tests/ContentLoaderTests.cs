@@ -53,6 +53,15 @@ public sealed class ContentLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_DefaultControlStateWeights_Succeeds()
+    {
+        var bundle = LoadWith();
+        var weights = bundle.Scenario.Objectives[0].ControlStateWeights;
+        Assert.Equal(3, weights.Count);
+        Assert.True(Math.Abs(weights.Values.Sum() - 1.5) < 1e-6);
+    }
+
+    [Fact]
     public void Load_ProbabilityAboveOne_ThrowsValidation()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
@@ -72,7 +81,7 @@ public sealed class ContentLoaderTests : IDisposable
                     new JsonObject { ["type"] = "PreserveStrength", ["unit"] = "U1", ["minPercent"] = 50, ["weight"] = 0.6 }
                 };
             }));
-        Assert.Contains("weight", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("objectives weight sum", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

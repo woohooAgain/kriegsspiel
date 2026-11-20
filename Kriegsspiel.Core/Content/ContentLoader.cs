@@ -254,16 +254,12 @@ public sealed class ContentLoader
                 ValidateEnumString(objective.TargetFaction, Factions, $"Scenario '{scenario.Id}': objective targetFaction");
             if (objective.ControlStateWeights.Count > 0)
             {
-                var total = 0.0;
                 foreach (var (state, w) in objective.ControlStateWeights)
                 {
                     ValidateEnumString(state, ControlStates, $"Scenario '{scenario.Id}': objective control state");
                     if (w < 0 || w > 1)
                         throw new ContentValidationException($"Scenario '{scenario.Id}': objective control state weight for '{state}' must be in [0,1].");
-                    total += w;
                 }
-                if (!AreClose(total, 1.0))
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': objective control state weights sum must be 1 (actual {FormatDouble(total)}).");
             }
             if (objective.VictoryThreshold != 0 && (!IsProbability(objective.VictoryThreshold) || objective.VictoryThreshold <= 0 || objective.VictoryThreshold >= 1))
                 throw new ContentValidationException($"Scenario '{scenario.Id}': objective victoryThreshold must be in (0,1) when specified.");
