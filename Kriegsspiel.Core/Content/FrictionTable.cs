@@ -14,6 +14,17 @@ public sealed class FrictionTable
     public LlmParameters Llm { get; init; } = new();
     public List<DifficultyProfile> DifficultyProfiles { get; init; } = new();
 
+    public double AmbiguityWeight => Orders.Ambiguity.MissingTarget;
+    public double LiteralismWeight => Orders.Traits.Literalism;
+    public double CautionWeight => Orders.Traits.Caution;
+    public int CourierBaseDelayMinutes => Hq.DefaultDeliveryTimeMinutes;
+    public int FieldCourierDelayMinutes => Hq.DefaultReturnTimeMinutes;
+    public double CourierLostBase => Hq.CourierLossBase;
+    public double CourierLostPerKm => Hq.CourierLossPerKm;
+    public double CombatLethality => Combat.LethalitySelf;
+    public int ReportBaseDelayMinutes => Reports.BaseDelayMinutes;
+    public int ReportJitterMinutes => Reports.JitterMinutes;
+
     public sealed class HqParameters
     {
         public int Couriers { get; init; } = 2;
