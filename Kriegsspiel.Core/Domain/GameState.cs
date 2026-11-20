@@ -9,9 +9,9 @@ public sealed class GameState
     public required Dictionary<string, Zone> Zones { get; init; }
     public required Dictionary<string, Unit> Units { get; init; }
     public required PlayerKnowledge Knowledge { get; init; }
-    public required List<Order> Orders { get; init; } = new();
-    public required List<Report> DeliveredReports { get; init; } = new();
-    public required List<GameEvent> EventLog { get; init; } = new();
+    public List<Order> Orders { get; init; } = new();
+    public List<Report> DeliveredReports { get; init; } = new();
+    public List<GameEvent> EventLog { get; init; } = new();
     public int Turn { get; set; }
 
     public List<Report> InTransitReports { get; init; } = new();
