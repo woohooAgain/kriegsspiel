@@ -34,7 +34,7 @@ public sealed class Zone
     public List<Cargo> Cargo { get; init; } = new();
     public List<CivilianGroup> Civilians { get; init; } = new();
     public Faction? ControllingFaction { get; set; }
-    public int Cover { get; set; }
+    public double Cover { get; set; }
     public double MoveMultiplier { get; init; } = 1.0;
     public int TemporaryDefenseBonus { get; set; }
 

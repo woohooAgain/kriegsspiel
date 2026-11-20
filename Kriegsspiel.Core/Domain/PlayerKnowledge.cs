@@ -101,37 +101,41 @@ public sealed class PlayerKnowledge
             : report.FactKey;
         var value = FactValue(report, "value") ?? report.Text;
 
+        if (zoneId is null && factKey.StartsWith("zone:", StringComparison.Ordinal))
+            zoneId = factKey["zone:".Length..];
+
         if (!Facts.TryGetValue(factKey, out var claims))
         {
             claims = new List<KnowledgeClaim>();
             Facts[factKey] = claims;
         }
 
-        var claim = new KnowledgeClaim
-        {
-            FactKey = factKey,
-            Value = value,
-            Confidence = report.Confidence,
-            DeliveryMinute = report.DeliveryMinute,
-            EventMinute = report.EventMinute,
-            SourceId = report.SourceId
-        };
-
         var matching = claims.FirstOrDefault(c => string.Equals(c.Value, value, StringComparison.Ordinal));
         if (matching is not null)
         {
-            if (!string.Equals(matching.SourceId, claim.SourceId, StringComparison.Ordinal))
+            if (!string.Equals(matching.SourceId, report.SourceId, StringComparison.Ordinal))
                 matching.Confidence = Math.Min(3, matching.Confidence + 1);
-            matching.DeliveryMinute = Math.Max(matching.DeliveryMinute, claim.DeliveryMinute);
-            if (claim.EventMinute.HasValue)
-                matching.EventMinute = claim.EventMinute;
+            matching.DeliveryMinute = Math.Max(matching.DeliveryMinute, report.DeliveryMinute);
+            matching.EventMinute = report.EventMinute;
         }
         else
         {
             foreach (var other in claims)
-                other.Confidence = Math.Max(0, other.Confidence - 1);
-            claim.Confidence = Math.Max(0, claim.Confidence - 1);
-            claims.Add(claim);
+            {
+                other.Confidence = Math.Max(1, other.Confidence - 1);
+            }
+
+            var isFirstClaim = claims.Count == 0;
+            var newClaim = new KnowledgeClaim
+            {
+                FactKey = factKey,
+                Value = value,
+                Confidence = isFirstClaim ? Math.Clamp(report.Confidence, 0, 3) : Math.Max(1, report.Confidence - 1),
+                DeliveryMinute = report.DeliveryMinute,
+                EventMinute = report.EventMinute,
+                SourceId = report.SourceId
+            };
+            claims.Add(newClaim);
         }
 
         if (zoneId is not null)
@@ -162,7 +166,7 @@ public sealed class PlayerKnowledge
         zone.Confidence = claims.Count == 0 ? 0 : claims.Max(c => c.Confidence);
         zone.DeliveryMinute = report.ArrivesAt;
         zone.LastReportMinute = Math.Max(zone.LastReportMinute, report.ArrivesAt);
-        if (report.EventMinute > zone.EventMinute)
+        if (zone.EventMinute is null || report.EventMinute >= zone.EventMinute.Value)
             zone.EventMinute = report.EventMinute;
 
         var hasOccupied = claims.Any(c => !c.IsEmptyClaim);
