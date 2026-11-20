@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "{version}",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "text"],
+  "properties": {
+    "schemaVersion": { "const": "{version}" },
+    "text": { "type": "string" }
+  }
+}
