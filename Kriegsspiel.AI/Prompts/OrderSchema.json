@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "{version}",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "toUnitId", "intent", "targetZoneId", "targetObjectId", "targetUnitId", "notLaterThan", "reportBy", "movementMode", "constraints", "branches", "originalText"],
+  "properties": {
+    "schemaVersion": { "const": "{version}" },
+    "toUnitId": { "type": "string" },
+    "intent": { "enum": ["Seize", "Hold", "Move", "Recon", "Support", "Withdraw", "Reserve", "Occupy", "Advance", "Delay", "Escort", "Destroy", "Block", "Check", "Guard"] },
+    "targetZoneId": { "type": ["string", "null"] },
+    "targetObjectId": { "type": ["string", "null"] },
+    "targetUnitId": { "type": ["string", "null"] },
+    "notLaterThan": { "type": "integer" },
+    "reportBy": { "type": "integer" },
+    "movementMode": { "enum": ["March", "Covert", "Contact"] },
+    "constraints": { "type": "array", "maxItems": 5, "items": { "enum": ["NoZoneEntry", "NoEngagement", "NoRetreatBeyondZone", "NoAmmoUse", "NoWeaponDisplay"] } },
+    "branches": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["condition", "then", "else", "droppedConstraintName"],
+        "properties": {
+          "condition": { "enum": ["TargetHeldByEnemy", "BattleEnRoute", "DeadlineExpired", "BridgeDestroyed", "ContradictoryOrderReceived", "CommsLost"] },
+          "then": { "enum": ["Attack", "Bypass", "Hold", "Withdraw", "AlternateTarget", "RequestClarification", "ReportImmediately", "DropConstraint"] },
+          "else": { "enum": ["Attack", "Bypass", "Hold", "Withdraw", "AlternateTarget", "RequestClarification", "ReportImmediately", "DropConstraint", "null"] },
+          "droppedConstraintName": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "originalText": { "type": "string" }
+  }
+}
