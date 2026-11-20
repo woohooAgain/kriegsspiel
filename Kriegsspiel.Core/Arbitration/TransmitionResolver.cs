@@ -6,33 +6,32 @@ namespace Kriegsspiel.Core.Arbitration;
 
 public sealed class TransmissionResolver : ITransmissionResolver
 {
+    private readonly CourierPool _pool = new();
+
+    public CourierPool Pool => _pool;
+
     public TransmissionResult Transmit(Order o, GameState s, FrictionTable f, Random rng)
-    {
-        var sender = s.Units.Values.FirstOrDefault(u => u.Type == UnitType.HQ)
-                  ?? s.Units.Values.First();
-        var receiver = s.Units[o.ToUnitId];
+        => _pool.TransmitOrder(o, s, f, rng);
 
-        int baseDelay = sender.Type == UnitType.HQ ? f.CourierBaseDelayMinutes : f.FieldCourierDelayMinutes;
-        int distance = GraphDistance(s, sender.LocationZoneId, receiver.LocationZoneId);
-        int delay = baseDelay + distance / 2 + rng.Next(-5, 6);
+    public CourierDispatchResult? TransmitQuery(
+        string queryId,
+        string requesterId,
+        string targetId,
+        GameState state,
+        FrictionTable friction,
+        Random rng,
+        int? outboundTimeOverride = null,
+        int? returnTimeOverride = null,
+        double? outboundLossChance = null,
+        double? returnLossChance = null)
+        => _pool.TransmitQuery(queryId, requesterId, targetId, state, friction, rng, outboundTimeOverride, returnTimeOverride, outboundLossChance, returnLossChance);
 
-        double loss = f.CourierLostBase + f.CourierLostPerKm * distance;
-        return new TransmissionResult(Math.Max(5, delay), rng.NextDouble() < loss);
-    }
+    public void EnsureCouriers(GameState state, FrictionTable friction)
+        => _pool.EnsureCouriers(state, friction);
 
-    private static int GraphDistance(GameState s, string from, string to)
-    {
-        if (from == to) return 0;
-        var dist = new Dictionary<string, int> { [from] = 0 };
-        var q = new Queue<string>(); q.Enqueue(from);
-        while (q.Count > 0)
-        {
-            var cur = q.Dequeue();
-            if (cur == to) return dist[cur];
-            if (!s.Zones.TryGetValue(cur, out var z)) continue;
-            foreach (var (n, m) in z.TravelMinutes)
-                if (!dist.ContainsKey(n)) { dist[n] = dist[cur] + m; q.Enqueue(n); }
-        }
-        return 999;
-    }
+    public void UpdateTo(GameState state, int minute)
+        => _pool.UpdateTo(state, minute);
+
+    public void UpdateTo(GameState state, int minute, Random rng)
+        => _pool.UpdateTo(state, minute, rng);
 }
