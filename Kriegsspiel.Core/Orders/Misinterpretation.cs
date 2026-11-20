@@ -1,3 +1,12 @@
 ﻿namespace Kriegsspiel.Core.Orders;
 
-public enum Misinterpretation { None, ShiftZone, ChangeIntent, DropConstraint, DelayExecution }
+public enum Misinterpretation
+{
+    None,
+    ShiftZone,
+    ChangeIntent,
+    DropConstraint,
+    DelayExecution,
+    LiteralExecution,
+    BranchError
+}
