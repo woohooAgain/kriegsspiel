@@ -24,6 +24,11 @@ Kriegsspiel/                                      # корень репозит�
 │   └── projectDocs/                              # проектная документация
 │       ├── instructions.md                       # фактические конвенции кодинга и рабочие команды
 │       ├── reports/                              # отчёты по задачам и волнам (см. reports/README.md)
+│       │   ├── README.md                          # форматы отчётов по задачам и волнам
+│       │   ├── task-T-01-domain-and-contracts.md  # отчёт Wave 0 / T-01
+│       │   ├── task-T-02-clock-and-event-ordering.md # отчёт Wave 0 / T-02
+│       │   ├── task-T-03-content-profile-and-validation.md # отчёт Wave 0 / T-03
+│       │   └── wave-0-report.md                   # отчёт волны Wave 0
 │       ├── structure.md                          # этот файл: актуальная структура репозитория
 │       ├── tech-debt.md                          # оперативный список технического долга (TD-*)
 │       ├── todo.md                               # изолированные задачи разработки по волнам
@@ -81,16 +86,29 @@ Kriegsspiel/                                      # корень репозит�
 │   │   ├── ReportTemplates.cs                    # шаблоны и подстановка текста донесений
 │   │   ├── Scenario.cs                           # модель сценария
 │   │   └── ScenarioBundle.cs                     # пакет контента и GameStateFactory
+│   ├── Contracts/                                # контракты ядра для Wave 1
+│   │   ├── IGameRules.cs                         # параметры/проверки правил, CombatEffective
+│   │   ├── IKnowledgeUpdater.cs                  # обновление знания игрока
+│   │   ├── IRandomSource.cs                      # детерминированный RNG
+│   │   └── IReportFactory.cs                     # создание донесений
 │   ├── Domain/                                   # доменные сущности и состояние игры
-│   │   ├── Clock.cs                              # игровое время и очередь событий (PriorityQueue)
-│   │   ├── CommanderTraits.cs                    # record черт командира
+│   │   ├── Cargo.cs                              # enum CargoType и модель груза
+│   │   ├── CivilianGroup.cs                      # модель группы гражданских
+│   │   ├── Clock.cs                              # игровое время, фазы и очередь событий (PriorityQueue)
+│   │   ├── CommanderTraits.cs                    # record черт командира (5 параметров 0–3)
+│   │   ├── ContactGeometry.cs                    # enum ContactClass и геометрия контакта
+│   │   ├── Courier.cs                            # enum CourierState и модель курьера
+│   │   ├── EffectiveOrder.cs                     # эффективный приказ (версия/ветви/ReportBy)
 │   │   ├── GameEvent.cs                          # базовый GameEvent и конкретные события
-│   │   ├── GameState.cs                          # агрегированное состояние игры
-│   │   ├── Order.cs                              # enum OrderIntent и модель Order (namespace Kriegsspiel.Core.Orders)
+│   │   ├── GameState.cs                          # InTransitReports, курьеры, Seed/RNG, PendingCasualties
+│   │   ├── MovableObject.cs                      # enum MovableObjectState/PrisonerStatus и базовый тип
+│   │   ├── Order.cs                              # 7 слотов, версия, ветви (namespace Kriegsspiel.Core.Orders)
+│   │   ├── PendingCasualty.cs                    # отложенные потери (minute, unitId, amount)
 │   │   ├── PlayerKnowledge.cs                    # знание игрока о зонах (ZoneKnowledge, PlayerKnowledge)
-│   │   ├── Report.cs                             # enum ReportKind и модель донесения
-│   │   ├── Unit.cs                               # enums UnitType/Posture и модель подразделения
-│   │   └── Zone.cs                               # enum TerrainType и модель зоны
+│   │   ├── Report.cs                             # enum ReportKind и донесение (4 обязательных поля)
+│   │   ├── Unit.cs                               # enums Faction/UnitType/Posture, IsCombatEffective
+│   │   ├── Zone.cs                               # enums TerrainType/EdgeType и модель зоны
+│   │   └── ZoneObject.cs                         # enum ZoneObjectKind и объекты зоны
 │   ├── Orders/                                   # оценка и исходы понимания приказов
 │   │   ├── AmbiguityScorer.cs                    # расчёт неоднозначности приказа
 │   │   └── Misinterpretation.cs                  # enum типов искажения/неверного понимания
@@ -101,6 +119,8 @@ Kriegsspiel/                                      # корень репозит�
     ├── Kriegsspiel.Core.Tests.csproj              # xUnit, net10.0, ссылка только на Core
     ├── AmbiguityScorerTests.cs                   # тесты AmbiguityScorer
     ├── ClockTests.cs                             # тесты Clock
+    ├── ContentLoaderTests.cs                     # тесты валидации загрузки контента
+    ├── DomainInvariantsTests.cs                  # тесты инвариантов домена
     ├── TransmitionResolverTests.cs               # тесты TransmissionResolver (опечатка в имени файла)
     └── Fixtures/
         └── TestContent.cs                        # фабрика тестового контента/сценария
@@ -113,6 +133,6 @@ Kriegsspiel/                                      # корень репозит�
 - Опечатки в именах файлов/папок: `Transmition*`, `Assesment`, `TransmitionResolverTests.cs`. Исправление запланировано финальной задачей `T-23` в `todo.md`.
 - Расположение файлов не всегда совпадает с namespace: `Domain/Order.cs` → `Kriegsspiel.Core.Orders`; `Reports/IReportNarrator.cs` → `Kriegsspiel.Core.Reporting`; рендеры и `JsonSaveStore` лежат в `Commands/`, но объявляют `Kriegsspiel.Console.Rendering` / `...Persistence`.
 - `appsettings.json` в `Kriegsspiel.slnx` указан неверно; `launchSettings.json` передаёт `--Scenario test_01`, но командная строка в `ServiceRegistration` не подключена.
-- Принадлежность юнита к противнику в текущем коде определяется префиксом `ENEMY_` в ID, а не отдельным полем фракции.
+- Домен (Wave 0) вводит `Faction` как источник принадлежности, но резолверы (`CombatResolver`) всё ещё определяют противника префиксом `ENEMY_` в ID; переход на `Faction` — работа Wave 1 (см. `tech-debt.md`, TD-002).
 - Каталоги `.git`, `.vs`, `bin`, `obj`, `saves` в дерево не включены как служебные/генерируемые; `saves/` создаётся только при сохранении.
 - `readme.md` стоит считать целевым описанием, а этот файл — фактическим снимком структуры. Изменения инфраструктуры из `todo.md`, новые файлы в `docs/projectDocs/templates/`, `docs/projectDocs/workflows/`, `docs/projectDocs/tech-debt.md`, `docs/projectDocs/reports/` должны отражаться здесь при их появлении/изменении.

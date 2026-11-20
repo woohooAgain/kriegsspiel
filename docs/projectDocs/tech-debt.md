@@ -36,4 +36,58 @@
 ```
 
 ## Записи
-(пока пусто)
+
+## TD-001 — AmbiguityScorer: неверные веса A и отсутствие vague/branch-вкладов
+- **Статус:** planned
+- **Дата:** 2026-11-20
+- **Контекст:** Wave 0, ревью соответствия правилам после merge `T-01`
+- **Источник:** `Kriegsspiel.Core/Orders/AmbiguityScorer.cs:8-12` (+0.35 / +0.20 / +0.15 / +0.10); `docs/gameDocs/rules.md §4`
+- **Описание:** `Score` использует 0.35 за отсутствие цели, 0.20 за дедлайн, 0.15 за срок донесения и 0.10 при `Constraints.Count > 1`; вклады `vague patterns` и каждой ветви (≤3) по формуле §4 отсутствуют.
+- **Риск / почему может выстрелить:** A систематически расходится с §4; вероятность P и метрика «доля неоднозначных приказов A>0» считаются по чужой формуле.
+- **Предлагаемые действия:** переписать `Score` строго по §4 (цель 0.7, vague 0.25, дедлайн 0.1, ReportBy 0.1, каждая ветвь 0.05, clamp 0…1), покрыть точными тестами `AmbiguityScorerTests`.
+- **Связи:** `docs/gameDocs/rules.md §4`, `T-11`
+- **Примечание:** файл принадлежит `T-11` (Wave 1), в Wave 0 не трогался.
+
+## TD-002 — CombatResolver: ENEMY_ вместо Faction и игнорирование CombatEffective
+- **Статус:** planned
+- **Дата:** 2026-11-20
+- **Контекст:** Wave 0, ревью после merge `T-01`
+- **Источник:** `Kriegsspiel.Core/Arbitration/CombatResolver.cs:12-14` (`Id.StartsWith("ENEMY_")`), `:38-40` (`Power`); `Kriegsspiel.Core/Domain/Unit.cs` (`IsCombatEffective`, `IsEnemyOf`, `Faction`); `docs/gameDocs/rules.md §7`, `§11`
+- **Описание:** стороны определяются префиксом ID, хотя в домене введена `Faction`; расчёт силы и отбор участников не вызывают `Unit.IsCombatEffective`, небоеспособные юниты продолжают участвовать в бою.
+- **Риск / почему может выстрелить:** нарушено единое определение боеспособности; контроль зон, потери и пленение считаются по небоеспособным силам; `Faction` из T-01 остаётся неиспользуемой.
+- **Предлагаемые действия:** в `T-13` перейти на `Faction`/`IsEnemyOf`, проверять `CombatEffective` при расчёте силы, потерь и отхода; добавить тесты на небоеспособные юниты.
+- **Связи:** `docs/gameDocs/rules.md §7`, `§11`, `T-13`, `docs/projectDocs/structure.md`
+- **Примечание:** `CombatResolver.cs` — ownership `T-13`, Wave 0 его не меняла.
+
+## TD-003 — ReportKind.Impossible не требует ReportBy в домене
+- **Статус:** open
+- **Дата:** 2026-11-20
+- **Контекст:** Wave 0, сверка домена с правилами после merge `T-01`
+- **Источник:** `Kriegsspiel.Core/Domain/Report.cs` (`Impossible`, `ReportedBy`, `HasRequiredFields`, `Create`); `docs/gameDocs/rules.md §5`
+- **Описание:** `ReportKind.Impossible` объявлен, поле `ReportedBy` есть, но ни `Create`, ни `HasRequiredFields` не проверяют его наличия; донесение о невозможности может быть создано без `ReportBy`.
+- **Риск / почему может выстрелить:** прямое нарушение §5; ломается override отправителя (XO/старший выживший) и учёт `Impossible` как видимого противоречия в метрике реакции штаба.
+- **Предлагаемые действия:** зафиксировать инвариант в домене/контракте `IReportFactory` и тесте: `Kind == Impossible ⇒ ReportedBy` не пуст; назначить владельца (сейчас `T-14` владеет только `Reports/Arbitration`, не `Domain/Report.cs`).
+- **Связи:** `docs/gameDocs/rules.md §5`, `T-01`, `T-14`, `T-21e`
+- **Примечание:** отдельная задача/уточнение ownership; в текущем плане проверки нет.
+
+## TD-004 — deliveryMinute = ∞ не expressible в int-модели донесения
+- **Статус:** open
+- **Дата:** 2026-11-20
+- **Контекст:** Wave 0, сверка домена с §12 после merge `T-01`
+- **Источник:** `Kriegsspiel.Core/Domain/Report.cs` (`int ArrivesAt`/`DeliveryMinute`); `Kriegsspiel.Core/Domain/GameState.cs` (`LostReports`); `docs/gameDocs/rules.md §12`
+- **Описание:** §12 допускает для потерянных приказов `deliveryMinute = ∞` либо явное профильное правило штрафа; в модели это значение не expressible — доступны только неотрицательные `int`, сентинел/флаг не определён.
+- **Риск / почему может выстрелить:** метрика средней задержки и разбор потерянных приказов получат конечное число вместо ∞; профильное правило штрафа не может быть применено и проверено.
+- **Предлагаемые действия:** явно выбрать представление (nullable/sentinel/flag + правило штрафа в профиле) и зафиксировать в домене, `IGameRules` и тестах метрик.
+- **Связи:** `docs/gameDocs/rules.md §12`, `T-15`, `T-16`
+- **Примечание:** метрика в T-15 упомянута, но представление ∞ в модели ни одной карточкой не закреплено.
+
+## TD-005 — GameStateFactory не пробрасывает Scenario.Seed/EndMinute
+- **Статус:** open
+- **Дата:** 2026-11-20
+- **Контекст:** Wave 0, ревью инициализации состояния после merge `T-01`/`T-03`
+- **Источник:** `Kriegsspiel.Core/Content/ScenarioBundle.cs` (`GameStateFactory.FromBundle`); `Kriegsspiel.Core/Content/Scenario.cs` (`EndMinute`, `Seed`); `Kriegsspiel.Core/Domain/GameState.cs` (`Seed`, `RngState`, `EndMinute`); `docs/gameDocs/rules.md §12`
+- **Описание:** фабрика заполняет `ScenarioId`, `Clock`, словари и списки, но не копирует `Scenario.Seed` и `Scenario.EndMinute` в `GameState`; поля остаются значениями по умолчанию.
+- **Риск / почему может выстрелить:** детерминизм/replay и seed logging (§12, T-16/T-17/T-18) стартуют не с того seed; конец сценария не известен домену, контрольные минуты/окно оценки и AAR работают без границы.
+- **Предлагаемые действия:** пробросить `Seed`/`EndMinute` и начальный `RngState` в `FromBundle`, добавить тест соответствия `Scenario` ↔ `GameState`; отдельная карточка с ownership `ScenarioBundle.cs` (сейчас файл — `T-03`).
+- **Связи:** `docs/gameDocs/rules.md §12`, `T-01`, `T-03`, `T-16`, `T-18`
+- **Примечание:** `GameLoop.cs:28` вызывает `GameStateFactory.FromBundle`, поэтому дефект влияет на реальный запуск.

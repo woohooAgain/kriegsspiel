@@ -70,10 +70,10 @@
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter DomainInvariantsTests`
   - Утверждения: `CombatEffective` возвращает `false` при нарушении любого порога; `Report`/DTO-поля требуют event minute, delivery minute, source, confidence; `PlayerKnowledge` различает «нет данных» и «пусто»; `Order` хранит `orderVersion` и исходные ветви; `GameState` содержит `InTransitReports`, `CourierPool`, `Seed`/RNG state, `PendingCasualties`.
 - **Готово, если:**
-  - [ ] Все перечисленные доменные/контрактные файлы созданы или обновлены в рамках ownership.
-  - [ ] Новые типы/поля/события из §2–§12 представлены в домене и компилируются.
-  - [ ] Контракты Wave 1 объявлены и не требуют правок `Arbiter`/CLI.
-  - [ ] `DomainInvariantsTests` добавлен и покрывает ключевые инварианты.
+  - [x] Все перечисленные доменные/контрактные файлы созданы или обновлены в рамках ownership.
+  - [x] Новые типы/поля/события из §2–§12 представлены в домене и компилируются.
+  - [x] Контракты Wave 1 объявлены и не требуют правок `Arbiter`/CLI.
+  - [x] `DomainInvariantsTests` добавлен и покрывает ключевые инварианты.
 
 ### T-02 — Clock and event ordering
 - **ID:** `T-02`
@@ -95,9 +95,9 @@
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ClockTests`
   - Утверждения: события с одинаковой минутой выдаются по фазам `Delivery→Understanding→Movement→Combat→ReportCreate→ReportDeliver→Scheduled`; `Schedule` в прошлое бросает ожидаемое исключение; `AdvanceTo(Now)` не теряет события `Now`; `PendingCount` уменьшается при извлечении.
 - **Готово, если:**
-  - [ ] `Clock` использует `(minute, phase, sequence)` и стабильный порядок.
-  - [ ] Планирование в прошлое не маскируется silent-clamp.
-  - [ ] `ClockTests` покрывают порядок, прошлое и `PendingCount`.
+  - [x] `Clock` использует `(minute, phase, sequence)` и стабильный порядок.
+  - [x] Планирование в прошлое не маскируется silent-clamp.
+  - [x] `ClockTests` покрывают порядок, прошлое и `PendingCount`.
 
 ### T-03 — Content profile and validation
 - **ID:** `T-03`
@@ -130,9 +130,11 @@
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ContentLoaderTests`
   - Утверждения: валидные `Content/*.json` и `TestContent` загружаются без ошибок; загрузка с вероятностью `> 1`, суммой весов целей `!= 1`, `couriers == 0`, дублирующим id или несимметричным/несуществующим ребром завершается контролируемой ошибкой валидации.
 - **Готово, если:**
-  - [ ] Схема контента покрывает параметры §12 в пределах файлов владельца.
-  - [ ] `ContentLoader` валидирует обязательные инварианты профиля/сценария.
-  - [ ] Сценарии/шаблоны/fixture обновлены и проходят тесты загрузки.
+  - [x] Схема контента покрывает параметры §12 в пределах файлов владельца.
+  - [x] `ContentLoader` валидирует обязательные инварианты профиля/сценария.
+  - [x] Сценарии/шаблоны/fixture обновлены и проходят тесты загрузки.
+
+> Проверки сборки и тестов выполнены после установки .NET 10.0.404: `dotnet build Kriegsspiel.slnx` — 0 предупреждений/0 ошибок; `dotnet test Kriegsspiel.slnx --no-build` — Passed 46, Failed 0. Итоги — `docs/projectDocs/reports/wave-0-report.md`.
 
 ## Wave 1 — механики ядра
 
