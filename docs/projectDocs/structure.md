@@ -23,8 +23,22 @@ Kriegsspiel/                                      # корень репозит�
 │   │   └── rules.md                              # правила игры (канонический источник механик)
 │   └── projectDocs/                              # проектная документация
 │       ├── instructions.md                       # фактические конвенции кодинга и рабочие команды
+│       ├── reports/                              # отчёты по задачам и волнам (см. reports/README.md)
 │       ├── structure.md                          # этот файл: актуальная структура репозитория
-│       └── todo.md                               # изолированные задачи разработки по волнам
+│       ├── tech-debt.md                          # оперативный список технического долга (TD-*)
+│       ├── todo.md                               # изолированные задачи разработки по волнам
+│       ├── templates/                            # шаблоны промптов и декомпозиции
+│       │   └── taskDecompositionTemplate.md      # шаблон декомпозиции беклога в T-* задачи
+│       └── workflows/                            # процессы и промпты оркестрации
+│           ├── README.md
+│           ├── task-lifecycle.md
+│           └── prompts/
+│               ├── implementer-take-task.md
+│               ├── orchestrator-kickoff.md
+│               ├── planner-decompose.md
+│               ├── scenario-tester-run.md
+│               ├── tech-debt-intake.md
+│               └── verifier-review.md
 ├── Kriegsspiel.Console/                           # консольный UI и точка входа
 │   ├── Kriegsspiel.Console.csproj                # проект Exe: net10.0, Spectre.Console, ссылка на Core, копирование Content
 │   ├── Program.cs                                # точка входа, получение GameLoop и запуск
@@ -92,24 +106,6 @@ Kriegsspiel/                                      # корень репозит�
         └── TestContent.cs                        # фабрика тестового контента/сценария
 ```
 
-## Отличия `readme.md` от фактического состояния
-
-| `readme.md` | Факт |
-|---|---|
-| Проекты `Kriegsspiel.*` | Совпадает: каталоги, csproj, namespace и solution-ссылки используют единое написание `Kriegsspiel.*` |
-| `Kriegsspiel.sln` | Фактически `Kriegsspiel.slnx` |
-| `README.md` | Фактически `readme.md` |
-| Корневой `rules.md` | Правила находятся в `docs/gameDocs/rules.md`; корневого файла нет |
-| `Orders/OrderIntent.cs` | Отдельного файла нет; `OrderIntent` живёт в `Domain/Order.cs` |
-| `Reporting/TemplateReportNarrator.cs`, `Reporting/ReportFactory.cs` | Папки/файлов нет; всё в `Reports/IReportNarrator.cs` |
-| `Assessment/AfterActionReport.cs`, `Assessment/MetricCalculator.cs` | Отсутствуют; есть пустая `Assesment/` (опечатка) |
-| `Ai/IOrderCompiler.cs`, `Ai/IAmbiguityInterpreter.cs` | Отсутствуют; папка `Ai/` пуста |
-| Проект `Kriegsspiel.AI/` | Отсутствует |
-| `Console/Commands/QueryCommand.cs`, `TimeCommand.cs` | Отсутствуют |
-| `Console/Rendering/*`, `Console/Persistence/JsonSaveStore.cs` | Отдельных папок нет; файлы физически в `Commands/`, но объявляют другие namespace |
-| `Content/reports.ru.json` | Отсутствует |
-| `Core.Tests/UnderstandingResolverTests.cs`, `CombatResolverTests.cs` | Отсутствуют |
-| `Solution Items` → корневой `appsettings.json` | Реальный конфиг — `Kriegsspiel.Console/appsettings.json` |
 
 ## Оговорки
 
@@ -119,4 +115,4 @@ Kriegsspiel/                                      # корень репозит�
 - `appsettings.json` в `Kriegsspiel.slnx` указан неверно; `launchSettings.json` передаёт `--Scenario test_01`, но командная строка в `ServiceRegistration` не подключена.
 - Принадлежность юнита к противнику в текущем коде определяется префиксом `ENEMY_` в ID, а не отдельным полем фракции.
 - Каталоги `.git`, `.vs`, `bin`, `obj`, `saves` в дерево не включены как служебные/генерируемые; `saves/` создаётся только при сохранении.
-- `readme.md` стоит считать целевым описанием, а этот файл — фактическим снимком структуры. Изменения инфраструктуры из `todo.md` должны отражаться здесь по мере выполнения задач.
+- `readme.md` стоит считать целевым описанием, а этот файл — фактическим снимком структуры. Изменения инфраструктуры из `todo.md`, новые файлы в `docs/projectDocs/templates/`, `docs/projectDocs/workflows/`, `docs/projectDocs/tech-debt.md`, `docs/projectDocs/reports/` должны отражаться здесь при их появлении/изменении.

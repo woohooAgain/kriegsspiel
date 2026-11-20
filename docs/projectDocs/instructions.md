@@ -17,6 +17,7 @@
 - Отдельного lint/typecheck/CI/`.editorconfig`/`global.json` нет; роль typecheck и warning-gate выполняет сборка.
 - Команды: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`, `dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj`. В текущем окружении `dotnet` может отсутствовать.
 - Коммитить только по явной просьбе; перед коммитом проверять `git status`, `git diff`, `git log --oneline -10`.
+- Технический долг вне текущей задачи фиксируется в `docs/projectDocs/tech-debt.md`; при декомпозиции его учитывают (см. `AGENTS.md`, шаблон декомпозиции).
 
 ## 3. Именование
 
@@ -73,6 +74,8 @@
 - При чтении файлов использовать сабагентов для экономии контекста (`AGENTS.md:7`).
 
 ## 9. Приоритетные технические долги
+
+Живой список находок ведётся в `docs/projectDocs/tech-debt.md`. Ниже краткий исторический срез (может частично пересекаться с `tech-debt.md` — при расхождениях ориентироваться на `tech-debt.md`):
 
 1. Обновить `readme.md` и `Solution Items`, устранить опечатки `Transmition`/`Assesment` и разнести папки/namespace.
 2. Подключить `AddCommandLine` или убрать `--Scenario`/`args`.
