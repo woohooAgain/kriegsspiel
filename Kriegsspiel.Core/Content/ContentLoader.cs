@@ -1,10 +1,11 @@
 ﻿using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kriegsspiel.Core.Domain;
 
 namespace Kriegsspiel.Core.Content;
 
-public sealed class ContentValidationException : InvalidDataException
+public sealed class ContentValidationException : Exception
 {
     public ContentValidationException(string message) : base(message)
     {
