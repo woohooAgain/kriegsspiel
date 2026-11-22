@@ -159,7 +159,7 @@ public sealed class MapCommand(MapRenderer r) : ICommand
             "Нет данных" => current with { Presence = KnowledgePresence.NoData, Faction = null, UnknownFaction = false, OnlyConflicting = false },
             "Пусто" => current with { Presence = KnowledgePresence.Empty, Faction = null, UnknownFaction = false, OnlyConflicting = false },
             "Занято" => current with { Presence = KnowledgePresence.Occupied, Faction = null, UnknownFaction = false, OnlyConflicting = false },
-            "Синые по донесениям" => current with { Faction = Faction.Blue, Presence = null, UnknownFaction = false, OnlyConflicting = false },
+            "Синие по донесениям" => current with { Faction = Faction.Blue, Presence = null, UnknownFaction = false, OnlyConflicting = false },
             "Красные по донесениям" => current with { Faction = Faction.Red, Presence = null, UnknownFaction = false, OnlyConflicting = false },
             "Нейтральные по донесениям" => current with { Faction = Faction.Neutral, Presence = null, UnknownFaction = false, OnlyConflicting = false },
             "Сторона не опознана" => current with { Faction = null, UnknownFaction = true, Presence = null, OnlyConflicting = false },
