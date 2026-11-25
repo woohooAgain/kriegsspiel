@@ -72,5 +72,7 @@
 - Handoff-артефакты/refs оформлены по file-first правилам процесса.
 - Структура актуализирована при необходимости; `AGENTS.md`/`rules.md` не менялись без отдельного разрешения.
 
-## Связь с промптами
-`prompts/` (`orchestrator-kickoff.md`, `analyst-feature-spec.md`, `architect-decompose.md`, `implementer-take-task.md`, `verifier-review.md`, `scenario-tester-run.md`, `process-master-wave-retro.md`, `rules-auditor-audit.md`, `tech-debt-intake.md`).
+## Связь с ролями и скиллами
+- Роли: `.opencode/agent/*` (orchestrator, analyst, architect, implementer, verifier, scenario-tester, process-master, rules-auditor, docs-maintainer, repo-navigator).
+- Лончеры: `.opencode/command/*` (`orchestrator-kickoff`, `analyst-spec`, `architect-decompose`, `implementer-take-task`, `verifier-review`, `scenario-tester-run`, `process-master-retro`, `rules-auditor-audit`, `tech-debt-intake`).
+- Стандарты/шаблоны: `.opencode/skills/*` (см. `process-contract`, `status-envelope`, `report-writing`, `task-decomposition`, `gate-checklist` и др.).
