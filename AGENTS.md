@@ -1,62 +1,28 @@
-# AGENTS.md — правила работы агента
+# AGENTS.md
 
-Ты — очень опытный архитектор игровых движков с большим опытом .NET-разработки. Ты умеешь додумывать постановки, находить неописанные требования и дыры в формулировках, анализировать их и предлагать решения.
+Думай на английском, отвечай на русском. Действуй строго в рамках роли из `.opencode/agent/*`; не смешивай роли.
 
-Думай на английском, отвечай на русском.
-
-## Где лежит харнес (single source of truth)
-- **Определения ролей/субагентов:** `.opencode/agent/*` — канонические промпты и границы ролей.
-- **Переиспользуемые стандарты/шаблоны/чек-листы:** `.opencode/skills/*` (`process-contract`, `status-envelope`, `file-first-handoff`, `report-writing`, `task-decomposition`, `feature-spec`, `tech-debt-intake`, `process-retro`, `gate-checklist`, `scenario-evidence`).
-- **Лончеры ролей:** `.opencode/command/*`.
-- **Человекочитаемый обзор процесса:** `docs/projectDocs/workflows/` (нарратив; при расхождении приоритет — `.opencode` и канон ниже).
-- **Конфиг opencode:** `opencode.json` (`$schema`, `instructions`, `default_agent: orchestrator`).
-
-## Приоритет источников (при расхождении)
+## Источники истины (при расхождении)
 1. `docs/gameDocs/rules.md` — канон игры.
-2. `AGENTS.md` — этот файл.
-3. Скилл `process-contract` и остальные `.opencode/skills/*`.
-4. `docs/projectDocs/instructions.md`, `structure.md`, `todo.md`, `reports/README.md`.
+2. Этот файл.
+3. `.opencode/skills/process-contract` и остальные скиллы.
+4. `docs/projectDocs/*` (`instructions.md`, `structure.md`, `todo.md`, `reports/README.md`).
 5. `docs/projectDocs/workflows/*`.
 
-Противоречие не разрешать молча: зафиксировать факт и эскалировать через `orchestrator` к ответственной роли (`analyst`/`rules-auditor` — правила, `architect` — план, `process-master` — процесс).
+Противоречие не разрешай молча — эскалируй через `orchestrator`.
 
-## Операционная модель
-- **Конкретные действия выполняют конкретные агенты** (читают файлы, анализируют, готовят артефакты). При блокере вне полномочий — эскалация с фактами и остановка в своей зоне.
-- **`orchestrator` — только дирижёр.** Не читает файлы, не ищет по репозиторию, не анализирует содержимое, не синтезирует планы/причины/ownership. Его функции: выбрать следующего агента по правилам/статусам, передать refs/цель/ограничения, зафиксировать переход. В выводе — только статусы и короткие Status Envelope от субагентов; детали остаются в чатах субагентов и артефактах.
-- **File-first handoff.** Передача между ролями — через артефакты (спеки, планы, отчёты, handoff-ввод), а не inline-текст. Полные логи/диффы/цитаты/копипасты в ответ оркестратору запрещены; на доработках — дельта. Детали — в скилле `file-first-handoff`.
-- При сборе контекста внутри своей роли можно использовать поисковые субагенты, но не перекладывать анализ на `orchestrator`.
+## Где что лежит
+- Роли — `.opencode/agent/*`; скиллы — `.opencode/skills/*`; лончеры — `.opencode/command/*`.
+- Процедурные детали (ветвление, gate, handoff, отчёты, PI/TD) — в скиллах; не дублируй их здесь.
 
-## Status Envelope
-Каждый ответ роли оркестратору — компактный блок (ориентир ≤10 строк): `ROLE | TARGET | STATUS | ROUND | ARTIFACTS | NEXT | BLOCKERS | SUMMARY`. Формат, per-role статусы и примеры — скилл `status-envelope`.
+## Жёсткие правила (safety)
+- Не менять `AGENTS.md` и `docs/gameDocs/rules.md` без отдельного запроса с подтверждением.
+- `docs/projectDocs/todo.md` правит только `architect` в отдельной ветке по спецзапросу.
+- File ownership строгое: только файлы из `Владеет файлами` своей карточки.
+- Прямые коммиты в `main` запрещены; merge per-task (`verifier`), batch запрещён.
+- Передача между ролями — file-first + Status Envelope, без inline-логов/диффов.
+- Новые правила не имеют обратной силы.
 
-## Изменения процесса (обратной силы нет)
-Новые правила применяются только к новым задачам/волнам/спекам/отчётам. Существующие артефакты не приводятся задним числом. При анализе старых артефактов извлекать доступную информацию из любого представления и явно фиксировать недостающие данные (без догадок).
-
-## Канон и конвенции
-- **Правила игры:** `docs/gameDocs/rules.md`. Менять нельзя без отдельного запроса; при предложениях/противоречиях — сигнализировать.
-- **Общие конвенции:** `docs/projectDocs/instructions.md`.
-- **Структура:** `docs/projectDocs/structure.md` (актуализируется `docs-maintainer` при изменениях).
-- `AGENTS.md` и `docs/gameDocs/rules.md` не менять без отдельного явного запроса с подтверждением.
-
-## План и ownership
-- **`docs/projectDocs/todo.md` правит только `architect`** в отдельной ветке по специальному запросу `orchestrator`. Остальные роли `todo.md` не правят.
-- План/сценарий/launch-план должны быть доступны в базе/ветке волны до старта.
-- **Строгий file ownership:** исполнитель меняет только файлы из `Владеет файлами` своей карточки; внутри волны пересечений нет. Параллельные `implementer` — только по launch-плану `architect`.
-
-## Ветвление, gate и merge
-- **Ветка волны:** `wave/<N>-<slug>` от указанной базы (создаёт `architect` после `gate_passed`).
-- **Ветка задачи:** `task/T-XX-<kebab-slug>` от ветки волны; MR → в ветку волны.
-- **Gate проверяемости (до старта):** `verifier` проверяет `Как проверить`/`Готово, если` задач и сценарий волны, а также базу плана, полноту ownership и окружение (см. скилл `gate-checklist`). При недостаточности — `gate_failed`; ветка волны не создаётся, задачи не запускаются.
-- **Валидация/merge строго по одной `T-XX`**; batch запрещён. `implementer` не мержит; `verifier` мержит per-task после `verified` и ветку волны в `main` при условиях. Прямые коммиты в `main` запрещены.
-- При сбое сборки/тестов `verifier` не чинит код/тесты: фиксирует факты и эскалирует на triage `architect` (корректирующие `T-*` с обоснованной разбивкой причин).
-
-## Артефакты и отчёты
-- **Отчёты** `docs/projectDocs/reports/**` — владелец `verifier`, коммит после прохождения проверок. Шаблоны/ownership — скилл `report-writing`.
-- **Handoff** — file-first (`docs/projectDocs/reports/handoffs/...`); `.tmp` — локальный черновик, не транспорт.
-- **Процессные меры:** `docs/projectDocs/process-improvement-log.md` (`PI-*`, `process-master`, скилл `process-retro`).
-- **Техдолг:** `docs/projectDocs/tech-debt.md` (активные `open`/`planned`) и `tech-debt-archive.md`; скилл `tech-debt-intake`. `architect`/`analyst` учитывают техдолг при планировании/спеках.
-- **Бэклог/спеки:** `docs/gameDocs/featureBacklog.md` и `docs/gameDocs/featureSpecs/FS-*` (скилл `feature-spec`).
-
-## Качество
-- Код без комментариев, если явно не просили; следовать `instructions.md`.
-- Канонические проверки: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.slnx` (или `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`). Отсутствие среды — фиксировать как ограничение с доказательствами, не как успех.
+## Проверки
+- `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.slnx` (или `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`). Нет среды — фиксируй как ограничение, не как успех.
+- Код без комментариев, если не просили.
