@@ -4,6 +4,7 @@
 
 ```text
 Kriegsspiel/
+├── .gitignore                                  # Правила игнорирования служебных и генерируемых путей.
 ├── AGENTS.md                                   # Глобальные правила работы агентов и указатели на харнес.
 ├── opencode.json                               # Конфиг opencode ($schema, instructions, default_agent=orchestrator).
 ├── .opencode/                                  # Стандартные артефакты opencode: роли, скиллы, команды.
@@ -39,8 +40,20 @@ Kriegsspiel/
 │       ├── process-retro/SKILL.md              # PI-* и замыкание петли мер.
 │       ├── gate-checklist/SKILL.md             # Формальный gate проверяемости.
 │       └── scenario-evidence/SKILL.md          # Воспроизводимые прогоны и evidence.
+├── Kriegsspiel.AI/                             # Адаптеры LLM: компиляция приказов, трактовка неоднозначностей, нарратив.
+│   ├── Kriegsspiel.AI.csproj                   # Проект адаптеров LLM.
+│   ├── LlmAmbiguityInterpreter.cs              # LLM-трактовка неоднозначных приказов.
+│   ├── LlmOrderCompiler.cs                     # Компиляция текстовых приказов через LLM.
+│   ├── LlmReportNarrator.cs                    # LLM-нарратив донесений.
+│   ├── StateQueryTools.cs                      # Загрузка промптов/схем и проекция состояния для LLM.
+│   └── Prompts/                                # Промпты и JSON-схемы для LLM.
+│       ├── AmbiguityPrompt.txt                 # Промпт трактовки неоднозначностей.
+│       ├── NarrationPrompt.txt                 # Промпт нарратива донесений.
+│       ├── NarrationSchema.json                # JSON-схема нарратива.
+│       ├── OrderPrompt.txt                     # Промпт компиляции приказов.
+│       └── OrderSchema.json                    # JSON-схема приказа.
 ├── Directory.Build.props                       # Общие свойства сборки для проектов решения.
-├── Kriegsspiel.slnx                            # Файл решения.
+├── Kriegsspiel.slnx                            # Файл решения (Core, Console, Core.Tests, AI).
 ├── readme.md                                   # Обзор проекта (может отставать от фактической структуры).
 ├── Content/                                    # Игровые данные и сценарии.
 │   ├── friction.json                           # Параметры трения и связанные игровые коэффициенты.
@@ -54,7 +67,18 @@ Kriegsspiel/
 │   ├── gameDocs/                               # Игровая документация.
 │   │   ├── featureBacklog.md                   # Бэклог идей и предложений по механикам.
 │   │   ├── featureSpecs/                       # Бизнес-спецификации фич (FS-*), готовит analyst.
-│   │   │   └── README.md                       # Правила и шаблон оформления FS-*.
+│   │   │   ├── README.md                       # Правила и шаблон оформления FS-*.
+│   │   │   ├── FS-001-commander-casualty-and-replacement.md # Выбывание и замена командиров.
+│   │   │   ├── FS-002-squad-splitting.md       # Разделение отряда.
+│   │   │   ├── FS-003-rally-routed-troops.md   # Сбор панически отступивших войск.
+│   │   │   ├── FS-004-campaign-unit-carryover.md # Длинные кампании и перенос юнитов.
+│   │   │   ├── FS-005-large-maps-console-display.md # Большие карты и отображение в консоли.
+│   │   │   ├── FS-006-audio-accompaniment.md   # Звуковое сопровождение.
+│   │   │   ├── FS-007-composite-units.md       # Составные подразделения.
+│   │   │   ├── FS-008-complex-equipment-model.md # Более сложная модель снаряжения.
+│   │   │   ├── FS-009-localization.md          # Локализация.
+│   │   │   ├── FS-010-friction-table-comments.md # Понятные комментарии для таблицы трения.
+│   │   │   └── FS-011-enemy-encirclement.md    # Окружение противника.
 │   │   └── rules.md                            # Канонические правила игры.
 │   └── projectDocs/                            # Проектная и процессная документация.
 │       ├── instructions.md                     # Фактические конвенции разработки и проверки.
@@ -62,7 +86,18 @@ Kriegsspiel/
 │       ├── reports/                            # Канонические отчёты, file-first handoff и локальные черновики.
 │       │   ├── README.md                       # Шаблоны, ownership и правила отчётов/handoff.
 │       │   ├── handoffs/                       # Структурированные handoff-артефакты (file-first).
-│       │   │   └── README.md                   # Правила именования и использования handoff-файлов.
+│       │   │   ├── README.md                   # Правила именования и использования handoff-файлов.
+│       │   │   ├── docs-maintainer-structure-sync-r2.md # Handoff docs-maintainer: синхронизация structure.md, раунд 2.
+│       │   │   ├── implementer-T-21a-r1.md     # Handoff T-21a, раунд 1.
+│       │   │   ├── implementer-T-21b-r1.md     # Handoff T-21b, раунд 1.
+│       │   │   ├── implementer-T-21c-r1.md     # Handoff T-21c, раунд 1.
+│       │   │   ├── implementer-T-21d-r1.md     # Handoff T-21d, раунд 1.
+│       │   │   ├── implementer-T-21e-r1.md     # Handoff T-21e, раунд 1.
+│       │   │   ├── implementer-T-22-r1.md      # Handoff T-22, раунд 1.
+│       │   │   ├── implementer-T-23-r1.md      # Handoff T-23, раунд 1.
+│       │   │   ├── implementer-T-24-r1.md      # Handoff T-24, раунд 1.
+│       │   │   ├── implementer-T-24-r2.md      # Handoff T-24, раунд 2.
+│       │   │   └── implementer-T-25-r1.md      # Handoff T-25, раунд 1.
 │       │   ├── .tmp/                           # Локальные gitignored черновики (не транспорт процесса).
 │       │   │   └── README.md                   # Назначение каталога локальных черновиков.
 │       │   ├── task-T-01-domain-and-contracts.md # Отчёт по задаче T-01.
@@ -78,9 +113,20 @@ Kriegsspiel/
 │       │   ├── task-T-17-ai-llm-adapter.md    # Отчёт по задаче T-17.
 │       │   ├── task-T-18-enemy-doctrine.md     # Отчёт по задаче T-18.
 │       │   ├── task-T-20-arbiter-integration.md # Отчёт по задаче T-20.
+│       │   ├── task-T-21a-order-constructor-cli.md # Отчёт по задаче T-21a.
+│       │   ├── task-T-21b-query-cli.md         # Отчёт по задаче T-21b.
+│       │   ├── task-T-21c-map-renderer.md      # Отчёт по задаче T-21c.
+│       │   ├── task-T-21d-journal-renderer.md  # Отчёт по задаче T-21d.
+│       │   ├── task-T-21e-situation-report-renderer.md # Отчёт по задаче T-21e.
+│       │   ├── task-T-22-shell-di-integration.md # Отчёт по задаче T-22.
+│       │   ├── task-T-23-final-cleanup-docs.md # Отчёт по задаче T-23.
+│       │   ├── task-T-24-scalable-knowledge-map.md # Отчёт по задаче T-24.
+│       │   ├── task-T-25-fs005-scale-demo.md   # Отчёт по задаче T-25.
 │       │   ├── wave-0-report.md                # Отчёт по волне 0.
 │       │   ├── wave-1-report.md                # Отчёт по волне 1.
-│       │   └── wave-2-report.md                # Отчёт по волне 2.
+│       │   ├── wave-2-report.md                # Отчёт по волне 2.
+│       │   ├── wave-3-report.md                # Отчёт по волне 3.
+│       │   └── wave-4-report.md                # Отчёт по волне 4.
 │       ├── structure.md                        # Описание структуры репозитория и назначения файлов.
 │       ├── tech-debt.md                        # Активный список технического долга.
 │       ├── tech-debt-archive.md                # Архив закрытых записей технического долга.
@@ -98,13 +144,17 @@ Kriegsspiel/
 │   │   ├── ICommand.cs                         # Контракт команды пользовательского интерфейса.
 │   │   ├── JournalCommand.cs                   # Команда отображения журнала событий.
 │   │   ├── JournalRenderer.cs                  # Формирование вывода журнала.
-│   │   ├── JsonSaveStore.cs                    # Сохранение состояния игры в файл.
+│   │   ├── LoadCommand.cs                      # Команда загрузки сохранённой игры.
 │   │   ├── MapCommand.cs                       # Команда отображения карты.
 │   │   ├── MapRenderer.cs                      # Формирование текстового представления карты.
+│   │   ├── OrderBuilder.cs                     # Пошаговый конструктор приказа.
 │   │   ├── OrderCommand.cs                     # Команда ввода приказа.
+│   │   ├── QueryCommand.cs                     # Команда запроса оценки приказа/передачи.
 │   │   ├── ReportRenderer.cs                   # Формирование вывода донесений.
 │   │   ├── SaveCommand.cs                      # Команда сохранения игры.
 │   │   └── SituationCommand.cs                 # Команда отображения текущей обстановки.
+│   ├── Persistence/                            # Сохранение и загрузка состояния игры.
+│   │   └── JsonSaveStore.cs                    # Сохранение/загрузка состояния игры в JSON-файл.
 │   ├── Properties/
 │   │   └── launchSettings.json                 # Профили запуска для локальной разработки.
 │   └── Startup/
@@ -112,19 +162,38 @@ Kriegsspiel/
 │       └── ServiceRegistration.cs              # Композиция и регистрация зависимостей приложения.
 ├── Kriegsspiel.Core/                           # Ядро симуляции, доменная модель и правила.
 │   ├── Kriegsspiel.Core.csproj                 # Проект библиотеки ядра.
-│   ├── Ai/                                     # Заготовка для компонентов, связанных с ИИ.
+│   ├── Ai/                                     # AI-пайплайны: промпты, схемы, worldview и fallback-и.
+│   │   ├── AiPipelines.cs                      # Валидация AI-ответов и интерфейсы интерпретации.
+│   │   ├── AiPromptBuilder.cs                  # Сборка промптов из игрового контекста.
+│   │   ├── AiReplayLog.cs                      # Журнал AI-вызовов для воспроизводимости.
+│   │   ├── AiSchemas.cs                        # Схемы AI-приказов/нарратива и проверки.
+│   │   ├── AiStableId.cs                       # Стабильные идентификаторы для AI-контекста.
+│   │   ├── AiWorldView.cs                      # Представление мира для AI.
+│   │   ├── DeterministicRandomSource.cs        # Детерминированный источник случайности.
+│   │   ├── DoctrineOrderFallback.cs            # Fallback-приказы по доктрине при сбое AI.
+│   │   ├── ILLmClient.cs                       # Контракт LLM-клиента и делегирующая реализация.
+│   │   └── NarrationFallback.cs                # Fallback-нарратив при сбое AI.
 │   ├── Arbitration/                            # Оркестрация хода и разрешение игровых подсистем.
 │   │   ├── Arbiter.cs                          # Координация игрового шага и диспетчеризация событий.
 │   │   ├── CombatResolver.cs                   # Разрешение боевых столкновений.
+│   │   ├── ContactGeometryResolver.cs          # Разрешение геометрии контакта сторон.
+│   │   ├── CourierPool.cs                      # Пул курьеров и диспетчеризация сообщений.
+│   │   ├── EnemyDoctrine.cs                    # Доктрина противника и его решения.
 │   │   ├── ExecutionResolver.cs                # Исполнение приказов и связанные игровые действия.
 │   │   ├── ICombatResolver.cs                  # Контракт разрешения боя.
 │   │   ├── IExecutionResolver.cs               # Контракт исполнения приказов.
-│   │   ├── ITransmitionResolvers.cs            # Контракт передачи сообщений/приказов.
+│   │   ├── ITransmissionResolver.cs            # Контракт передачи сообщений/приказов.
 │   │   ├── IUnderstandingResolver.cs           # Контракт интерпретации и понимания приказов.
-│   │   ├── TransmitionResolver.cs              # Реализация передачи и задержек сообщений.
+│   │   ├── KnowledgeUpdater.cs                 # Обновление знаний стороны о противнике и местности.
+│   │   ├── ObjectiveEvaluator.cs               # Оценка выполнения целей сценария.
+│   │   ├── PathPlanner.cs                      # Построение маршрутов движения по зонам.
+│   │   ├── ReconResolver.cs                    # Разведка и обнаружение противника.
+│   │   ├── TransmissionResolver.cs             # Реализация передачи и задержек сообщений.
 │   │   ├── TurnResult.cs                       # Результаты шага и передачи.
 │   │   └── UnderstandingResolver.cs            # Реализация понимания и искажения приказов.
-│   ├── Assesment/                              # Заготовка для компонентов оценки и разбора.
+│   ├── Assessment/                             # Оценка результатов боя и after-action отчёты.
+│   │   ├── AfterActionReport.cs                # Формирование after-action отчёта.
+│   │   └── MetricCalculator.cs                 # Расчёт метрик задержек приказов и боя.
 │   ├── Content/                                # Загрузка и модели игрового контента.
 │   │   ├── ContentLoader.cs                    # Загрузка сценариев, параметров и шаблонов из данных.
 │   │   ├── FrictionTable.cs                    # Модель параметров трения.
@@ -155,18 +224,45 @@ Kriegsspiel/
 │   │   ├── Unit.cs                             # Модель подразделения.
 │   │   ├── Zone.cs                             # Модель зоны местности.
 │   │   └── ZoneObject.cs                       # Модель объекта, расположенного в зоне.
-│   ├── Orders/                                 # Логика оценки и вариантов понимания приказов.
+│   ├── Orders/                                 # Логика оценки, конфликтов и вариантов понимания приказов.
 │   │   ├── AmbiguityScorer.cs                  # Оценка неоднозначности приказа.
-│   │   └── Misinterpretation.cs                # Типы и варианты неверного понимания приказа.
-│   └── Reports/                                # Формирование и представление текста донесений.
+│   │   ├── ConflictResolver.cs                 # Разрешение конфликтов приказов.
+│   │   ├── Misinterpretation.cs                # Типы и варианты неверного понимания приказа.
+│   │   └── OrderBranch.cs                      # Ветвление приказов и правила вычисления ветвей.
+│   ├── Persistence/                            # DTO, маппинг и сериализация состояния игры.
+│   │   ├── ClockDto.cs                         # DTO игрового времени и очереди событий.
+│   │   ├── CourierDtos.cs                      # DTO курьеров и отложенных потерь.
+│   │   ├── GameEventDto.cs                     # DTO игровых событий.
+│   │   ├── GameStateDto.cs                     # DTO полного состояния игры.
+│   │   ├── GameStateMapper.cs                  # Маппинг состояния в DTO и обратно.
+│   │   ├── GameStatePersistence.cs             # Загрузка/сохранение состояния игры.
+│   │   ├── KnowledgeDtos.cs                    # DTO знаний стороны.
+│   │   ├── OrderDtos.cs                        # DTO приказов и их ветвей.
+│   │   ├── PersistenceJson.cs                  # Общие JsonSerializerOptions сохранений.
+│   │   ├── PersistenceSchema.cs                # Версия и проверка схемы сохранения.
+│   │   ├── ReportDto.cs                        # DTO донесений.
+│   │   ├── UnitDtos.cs                         # DTO подразделений и командиров.
+│   │   └── ZoneDtos.cs                         # DTO зон, объектов и грузов.
+│   └── Reporting/                              # Формирование и представление текста донесений.
 │       └── IReportNarrator.cs                  # Контракт и базовая реализация нарратива донесений.
 └── Kriegsspiel.Core.Tests/                     # Модульные тесты ядра.
     ├── Kriegsspiel.Core.Tests.csproj           # Проект тестов ядра.
+    ├── AIAdapterTests.cs                       # Тесты AI-адаптеров и fallback-ов.
     ├── AmbiguityScorerTests.cs                 # Тесты оценки неоднозначности приказов.
+    ├── ArbiterIntegrationTests.cs              # Интеграционные тесты шага арбитра.
     ├── ClockTests.cs                           # Тесты игрового времени и очереди событий.
+    ├── CombatResolverTests.cs                  # Тесты разрешения боя.
     ├── ContentLoaderTests.cs                   # Тесты загрузки и валидации контента.
     ├── DomainInvariantsTests.cs                # Тесты доменных инвариантов.
-    ├── TransmitionResolverTests.cs             # Тесты передачи и доставки сообщений.
+    ├── EnemyDoctrineTests.cs                   # Тесты доктрины противника.
+    ├── ExecutionResolverTests.cs               # Тесты исполнения приказов.
+    ├── FogOfWarTests.cs                        # Тесты тумана войны и знаний стороны.
+    ├── Fs005ScaleContentTests.cs               # Тесты масштабированного контента FS-005.
+    ├── ObjectiveEvaluatorTests.cs              # Тесты оценки целей.
+    ├── PersistenceTests.cs                     # Тесты сохранения/загрузки состояния.
+    ├── ReportTests.cs                          # Тесты формирования донесений.
+    ├── TransmissionResolverTests.cs            # Тесты передачи и доставки сообщений.
+    ├── UnderstandingResolverTests.cs           # Тесты понимания и искажения приказов.
     └── Fixtures/
         └── TestContent.cs                      # Вспомогательные тестовые данные и сценарии.
 ```
