@@ -4,7 +4,41 @@
 
 ```text
 Kriegsspiel/
-├── AGENTS.md                                   # Правила и инструкции для работы агентов в репозитории.
+├── AGENTS.md                                   # Глобальные правила работы агентов и указатели на харнес.
+├── opencode.json                               # Конфиг opencode ($schema, instructions, default_agent=orchestrator).
+├── .opencode/                                  # Стандартные артефакты opencode: роли, скиллы, команды.
+│   ├── agent/                                  # Субагенты и primary-роль orchestrator.
+│   │   ├── orchestrator.md                     # Primary-агент: дирижирование циклом по статусам/refs.
+│   │   ├── analyst.md                          # Роль analyst: FS-*, разрешение неоднозначностей.
+│   │   ├── architect.md                        # Роль architect: декомпозиция, todo.md, сценарии, triage.
+│   │   ├── implementer.md                      # Роль implementer: одна T-*, проверки, handoff.
+│   │   ├── verifier.md                         # Роль verifier: gate, per-task/wave, merge, отчёты.
+│   │   ├── scenario-tester.md                  # Роль scenario-tester: воспроизводимые прогоны.
+│   │   ├── process-master.md                   # Роль process-master: ретро волны и PI-*.
+│   │   ├── rules-auditor.md                    # Роль rules-auditor: аудит правил и трактовок.
+│   │   ├── docs-maintainer.md                  # Роль docs-maintainer: актуализация structure.md.
+│   │   └── repo-navigator.md                   # Роль repo-navigator: read-only поиск контекста.
+│   ├── command/                                # Лончеры ролей/процедур (замена прежних prompts/).
+│   │   ├── orchestrator-kickoff.md             # Запуск/ведение цикла.
+│   │   ├── analyst-spec.md                     # Лончер analyst.
+│   │   ├── architect-decompose.md              # Лончер architect.
+│   │   ├── implementer-take-task.md            # Лончер implementer.
+│   │   ├── verifier-review.md                  # Лончер verifier.
+│   │   ├── scenario-tester-run.md              # Лончер scenario-tester.
+│   │   ├── process-master-retro.md             # Лончер process-master.
+│   │   ├── rules-auditor-audit.md              # Лончер rules-auditor.
+│   │   └── tech-debt-intake.md                 # Лончер приёма находки в техдолг.
+│   └── skills/                                 # Переиспользуемые стандарты/шаблоны/чек-листы.
+│       ├── process-contract/SKILL.md           # Канонические процессные инварианты и приоритет источников.
+│       ├── status-envelope/SKILL.md            # Формат/статусы Status Envelope.
+│       ├── file-first-handoff/SKILL.md         # Правила file-first handoff.
+│       ├── report-writing/SKILL.md             # Шаблоны task/wave-отчётов.
+│       ├── task-decomposition/SKILL.md         # Декомпозиция в волны/T-* и launch-план.
+│       ├── feature-spec/SKILL.md               # Шаблон/статусы FS-*.
+│       ├── tech-debt-intake/SKILL.md           # TD-* и разграничение с PI-*.
+│       ├── process-retro/SKILL.md              # PI-* и замыкание петли мер.
+│       ├── gate-checklist/SKILL.md             # Формальный gate проверяемости.
+│       └── scenario-evidence/SKILL.md          # Воспроизводимые прогоны и evidence.
 ├── Directory.Build.props                       # Общие свойства сборки для проектов решения.
 ├── Kriegsspiel.slnx                            # Файл решения.
 ├── readme.md                                   # Обзор проекта (может отставать от фактической структуры).
@@ -53,19 +87,9 @@ Kriegsspiel/
 │       ├── todo.md                             # План исполняемых задач и карточек.
 │       ├── templates/                          # Шаблоны документов и декомпозиции.
 │       │   └── taskDecompositionTemplate.md    # Шаблон декомпозиции работ на задачи и волны.
-│       └── workflows/                          # Описание процессов и промпты ролей.
+│       └── workflows/                          # Человекочитаемый обзор процесса (source of truth — .opencode).
 │           ├── README.md                       # Обзор процесса оркестрации и правил выполнения.
-│           ├── task-lifecycle.md               # Жизненный цикл фичи, задачи, волны и роли.
-│           └── prompts/                        # Промпты для ролей процесса.
-│               ├── analyst-feature-spec.md     # Промпт для подготовки FS-* и разрешения неоднозначностей.
-│               ├── architect-decompose.md      # Промпт для декомпозиции, сценария/launch-плана и triage.
-│               ├── implementer-take-task.md   # Промпт для реализации задачи и file-first handoff.
-│               ├── orchestrator-kickoff.md     # Промпт для дирижирования цикла (статусы/refs).
-│               ├── process-master-wave-retro.md # Промпт для ретро волны и процессных мер (PI-*).
-│               ├── rules-auditor-audit.md      # Промпт для аудита правил, противоречий и ребаланса.
-│               ├── scenario-tester-run.md      # Промпт для сценарных/интеграционных прогонов.
-│               ├── tech-debt-intake.md         # Промпт для фиксации находок в техдолг.
-│               └── verifier-review.md          # Промпт для gate, верификации, merge и отчётности.
+│           └── task-lifecycle.md               # Жизненный цикл фичи, задачи, волны и роли.
 ├── Kriegsspiel.Console/                        # Консольное приложение и точка входа.
 │   ├── Kriegsspiel.Console.csproj              # Проект консольного приложения.
 │   ├── Program.cs                              # Точка входа приложения.
