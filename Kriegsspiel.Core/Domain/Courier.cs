@@ -25,6 +25,13 @@ public sealed class Courier
     public bool LostOnOutbound { get; set; }
     public bool LostOnReturn { get; set; }
 
+    public int? SentMinute { get; set; }
+    public int? DeliverAt { get; set; }
+    public int? ReturnAt { get; set; }
+    public int? LossReturnAt { get; set; }
+    public int TLeg { get; set; }
+    public int TLegBack { get; set; }
+
     public bool IsQuery => AssignedQueryId is not null;
     public bool IsAvailable => State == CourierState.Idle;
     public bool HasValidLegs => OutboundDeliveryTime > 0 && ReturnTime > 0;

@@ -1,4 +1,6 @@
-﻿namespace Kriegsspiel.Core.Domain;
+﻿using Kriegsspiel.Core.Orders;
+
+namespace Kriegsspiel.Core.Domain;
 
 public enum Faction
 {
@@ -35,10 +37,20 @@ public sealed class Unit
     public int Fatigue { get; set; }
     public int Ammo { get; set; }
     public required string LocationZoneId { get; set; }
-    public Posture Posture { get; set; } = Posture.Reserve;
+    public Posture Posture { get; set; } = Posture.Defend;
     public int SpeedKmh { get; init; } = 4;
     public required CommanderTraits Traits { get; init; }
     public string? CurrentOrderId { get; set; }
+
+    public bool IsOnEdge { get; set; }
+    public string? EdgeFromZoneId { get; set; }
+    public string? EdgeToZoneId { get; set; }
+    public int RemainingMinutes { get; set; }
+    public EdgeType EntryEdgeType { get; set; }
+
+    public Order? PendingOrder { get; set; }
+    public int? LastMovedMinute { get; set; }
+    public int? LastFoughtMinute { get; set; }
 
     public Faction Faction { get; init; } = global::Kriegsspiel.Core.Domain.Faction.Blue;
     public int InitialStrengthSnapshot { get; init; }
@@ -76,11 +88,7 @@ public sealed class Unit
 
     public int StrengthSnapshot => InitialStrengthSnapshot > 0 ? InitialStrengthSnapshot : Strength;
 
-    public bool IsCombatEffective =>
-        Strength >= 0.4 * StrengthSnapshot &&
-        Morale >= 30 &&
-        Readiness >= 20 &&
-        Ammo > 0;
+    public bool IsCombatEffective => Strength >= 0.30 * StrengthSnapshot;
 
     public bool CombatEffective => IsCombatEffective;
 
