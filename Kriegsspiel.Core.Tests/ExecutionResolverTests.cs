@@ -186,8 +186,87 @@ public class ExecutionResolverTests
         Assert.False(unit.IsOnEdge);
         Assert.Null(unit.PendingOrder);
         Assert.Contains(reports, report => report.Kind == ReportKind.Contact && report.FactKey == "contact:B");
+        var contactReport = reports.Single(report => report.Kind == ReportKind.Contact);
+        Assert.Equal(112, contactReport.ReportedOwnStrength);
+        Assert.Equal(88, contactReport.ReportedEnemyStrength);
+        Assert.Equal("B", contactReport.ObservedZoneId);
+        Assert.Equal(2, contactReport.Confidence);
         Assert.DoesNotContain(state.Clock.PendingKeys, key => key.Phase == EventPhase.Movement);
         Assert.Contains(state.Clock.PendingKeys, key => key.Phase == EventPhase.Combat && key.Minute == 390);
+    }
+
+    [Fact]
+    public void OnArrive_ReportCarriesHonestyDistortedOwnStrengthAndZeroEnemy()
+    {
+        var state = ChainState(out var unit, ab: 2);
+        var order = NewOrder(unit.Id, "B");
+        var resolver = new ExecutionResolver();
+        Start(state, resolver, order);
+
+        Advance(state, resolver, 361);
+        var reports = Advance(state, resolver, 362);
+
+        var arrival = reports.Single(report => report.Kind == ReportKind.Arrival);
+        Assert.Equal(112, arrival.ReportedOwnStrength);
+        Assert.Equal(0, arrival.ReportedEnemyStrength);
+        Assert.Equal(3, arrival.Confidence);
+    }
+
+    [Fact]
+    public void ImpossibleReport_CarriesHonestyDistortedOwnStrengthAndZeroEnemy()
+    {
+        var traits = new CommanderTraits(Initiative: 0, Caution: 3, Literalism: 2, ReportHonesty: 1);
+        var state = ChainState(out var unit, traits, ab: 3, bc: 3);
+        var order = NewOrder(unit.Id, "C", deadline: 361);
+        var resolver = new ExecutionResolver();
+        Start(state, resolver, order);
+
+        var reports = Advance(state, resolver, 363);
+
+        var impossible = reports.Single(report => report.Kind == ReportKind.Impossible);
+        Assert.Equal(124, impossible.ReportedOwnStrength);
+        Assert.Equal(0, impossible.ReportedEnemyStrength);
+        Assert.Equal(3, impossible.Confidence);
+    }
+
+    [Fact]
+    public void StatusReport_CarriesOwnStrengthAndZeroEnemy()
+    {
+        var state = ChainState(out var unit);
+        var order = NewOrder(unit.Id, target: null, intent: OrderIntent.Hold);
+        var resolver = new ExecutionResolver();
+
+        var reports = Start(state, resolver, order);
+
+        var status = Assert.Single(reports);
+        Assert.Equal(ReportKind.Status, status.Kind);
+        Assert.Equal(112, status.ReportedOwnStrength);
+        Assert.Equal(0, status.ReportedEnemyStrength);
+        Assert.Equal(2, status.Confidence);
+    }
+
+    [Fact]
+    public void OnMove_EnemyContact_ReportSumsEnemyStrengthInObservedZone()
+    {
+        var traits = new CommanderTraits(Initiative: 1, Caution: 1, Literalism: 1, ReportHonesty: 3);
+        var state = ChainState(out var unit, traits, ab: 2, bc: 5);
+        var first = NewUnit("E1", "B", new CommanderTraits(1, 1, 1, 1), Faction.Red);
+        var second = NewUnit("E2", "B", new CommanderTraits(1, 1, 1, 1), Faction.Red);
+        state.Units[first.Id] = first;
+        state.Units[second.Id] = second;
+        state.Zones["B"].PresentUnitIds.Add(first.Id);
+        state.Zones["B"].PresentUnitIds.Add(second.Id);
+        var order = NewOrder(unit.Id, "C");
+        var resolver = new ExecutionResolver();
+        Start(state, resolver, order);
+
+        var reports = Advance(state, resolver, 362);
+
+        var contact = reports.Single(report => report.Kind == ReportKind.Contact);
+        Assert.Equal(100, contact.ReportedOwnStrength);
+        Assert.Equal(200, contact.ReportedEnemyStrength);
+        Assert.Equal("B", contact.ObservedZoneId);
+        Assert.Equal(2, contact.Confidence);
     }
 
     [Fact]

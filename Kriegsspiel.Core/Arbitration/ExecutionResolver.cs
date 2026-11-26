@@ -3,6 +3,7 @@ using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Contracts;
 using Kriegsspiel.Core.Domain;
 using Kriegsspiel.Core.Orders;
+using Kriegsspiel.Core.Reporting;
 
 namespace Kriegsspiel.Core.Arbitration;
 
@@ -15,7 +16,7 @@ public sealed class ExecutionResolver : IExecutionResolver
     private readonly IReportFactory _reports;
     private readonly ConditionalWeakTable<GameState, ExecutionState> _states = new();
 
-    public ExecutionResolver() : this(new DefaultGameRules(), new DefaultReportFactory())
+    public ExecutionResolver() : this(new DefaultGameRules(), new ReportFactory(new FrictionTable()))
     {
     }
 
@@ -359,6 +360,22 @@ public sealed class ExecutionResolver : IExecutionResolver
                                      other.Strength > 0 &&
                                      unit.IsEnemyOf(other.Faction));
 
+    private static IReadOnlyCollection<Unit> EnemiesInZone(GameState s, Unit unit)
+    {
+        if (!s.Zones.TryGetValue(unit.LocationZoneId, out var zone))
+            return Array.Empty<Unit>();
+
+        var enemies = new List<Unit>();
+        foreach (var id in zone.PresentUnitIds)
+        {
+            if (id == unit.Id) continue;
+            if (s.Units.TryGetValue(id, out var other))
+                enemies.Add(other);
+        }
+
+        return enemies;
+    }
+
     private static int ClampCondition(int value) => Math.Clamp(value, 0, MaxConditionValue);
 
     private Report StatusReport(
@@ -378,16 +395,18 @@ public sealed class ExecutionResolver : IExecutionResolver
             ReportKind.Arrival or ReportKind.Impossible or ReportKind.Recon => 3,
             _ => 2
         };
-        var report = _reports.Create(
+        var report = _reports.CreateWithHonesty(
             minute,
             delivery,
-            unit.Id,
+            unit,
             _rules.ClampConfidence(confidence),
             kind,
             text,
             factKey,
-            unit.Faction,
-            unit.CommanderLost ? $"{unit.Id}-XO" : null);
+            reportedBy: unit.CommanderLost ? $"{unit.Id}-XO" : null,
+            honesty: unit.Traits.ReportHonesty,
+            observedZoneId: kind == ReportKind.Contact ? unit.LocationZoneId : null,
+            observedEnemies: kind == ReportKind.Contact ? EnemiesInZone(s, unit) : Array.Empty<Unit>());
         s.InTransitReports.Add(report);
         s.Clock.Schedule(new ReportDelivered(delivery, report.Id, unit.Id, report),
             EffectiveMinute(s, delivery), EventPhase.ReportDeliver);
@@ -418,22 +437,5 @@ public sealed class ExecutionResolver : IExecutionResolver
     private sealed class DefaultGameRules : IGameRules
     {
         public bool IsCombatEffective(Unit unit) => unit.IsCombatEffective;
-    }
-
-    private sealed class DefaultReportFactory : IReportFactory
-    {
-        public Report Create(
-            int eventMinute,
-            int deliveryMinute,
-            string sourceId,
-            int confidence,
-            ReportKind kind = ReportKind.Status,
-            string text = "",
-            string? factKey = null,
-            Faction sourceFaction = Faction.Blue,
-            string? reportedBy = null,
-            Dictionary<string, string>? facts = null) =>
-            Report.Create(eventMinute, deliveryMinute, sourceId, confidence, kind, text, factKey,
-                sourceFaction, reportedBy, facts);
     }
 }
