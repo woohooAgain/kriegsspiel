@@ -103,4 +103,4 @@
 - **§6:** разрыв на resolver-пути закрыт `T-54a` (static + runtime + tests); `wave_failed` r1 снят.
 - **Вердикт:** `wave_passed`; волна влита в `master` (`79b5fa7`), отчёт — отдельным merge-коммитом.
 - **Блокеры:** нет. **Новые `T-*`/`TD-*`:** нет (переход без техдолга). `AGENTS.md`, `docs/gameDocs/rules.md`, `todo.md` verifier не изменял; продуктовый код/тесты не правились.
-- **Маршрут:** `process-master` — ретро Wave 5 (включая кандидат-PI про `-- '*.cs'`); далее `architect` — планирование Wave 6.
+- **Маршрут:** ретро Wave 5 выполнено `process-master` (`process/wave5-retro-r1@5f62193`; новые `PI-023`–`PI-025` — `proposed`, `PI-001`/`PI-003`/`PI-004`/`PI-005` — `verified`, `PI-016`/`PI-021`/`PI-022` отложены) и влито `verifier`; далее `architect`/`orchestrator` — принятие `PI-023`–`PI-025` (сценарий волны/gate/роли) и планирование Wave 6.
