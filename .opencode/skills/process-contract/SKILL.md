@@ -45,3 +45,31 @@ description: Use in every Kriegsspiel role run to load the canonical process inv
 - Канонические отчёты `docs/projectDocs/reports/**` — владелец `verifier`, коммит после проверок.
 - Handoff — file-first (`docs/projectDocs/reports/handoffs/...`); `.tmp` — только локальный черновик, не транспорт.
 - Процессные фрикции/меры → `PI-*`/отчёты (`process-master`); продуктовые/кодовые находки вне scope → `TD-*` (`tech-debt.md`).
+
+## 8. Атрибуция коммитов по роли агента
+Цель — по истории git однозначно видеть, какая роль сделала коммит/merge. Правило действует для всех коммитящих ролей: `analyst`, `architect`, `implementer`, `verifier`, `scenario-tester`, `process-master`, `rules-auditor`, `docs-maintainer`. `orchestrator` и `repo-navigator` коммитов не делают.
+
+**Основной способ — identity роли на конкретную команду** (меняет и author, и committer; глобальный/локальный `git config` не менять):
+```sh
+git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" commit -m "<message>"
+git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" merge --no-ff <branch> -m "merge: <...>"
+```
+`<role>` — точное имя роли (`implementer`, `verifier`, ...). Override задаётся только на команду, чтобы роли не перетирали друг друга в общем worktree. Переменные `GIT_AUTHOR_*`/`GIT_COMMITTER_*` имеют приоритет над `-c` — в агентских запусках их не задавать (при наличии — снять/не использовать).
+
+**Резервный способ — trailer `Made-by-Agent: <role>`** в сообщении коммита. Обязателен, когда identity может быть потеряна или переписана: squash, cherry-pick из внешней ветки, ручная правка/amend, коммиты инструментами. Для merge — вторым `-m`:
+```sh
+git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" commit -m "<message>" -m "Made-by-Agent: <role>"
+git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" merge --no-ff <branch> -m "merge: <...>" -m "Made-by-Agent: <role>"
+```
+
+**Проверка (обязательна при per-task/wave верификации):**
+```sh
+git log -1 --format='%an <%ae> | %cn <%ce> | %(trailers:key=Made-by-Agent,valueonly)'
+git log --format='%ae' <base>..<branch> | sort -u
+```
+Ожидаемо: email author/committer — `<role>@kriegsspiel.local`; trailer, если есть, называет ту же роль. При merge committer — роль, выполняющая merge, авторство исходных коммитов сохраняется.
+
+**Ограничения:**
+- Обратной силы нет: существующие коммиты не переписываются (никаких rebase/amend только ради атрибуции). Коммиты без атрибуции до введения правила — пробел данных, не нарушение.
+- Собственный неопубликованный коммит можно исправить до merge; после merge/rebase-публикации историю не переписывать — фиксировать факт в отчёте/handoff.
+- Если identity применить нельзя (внешний инструмент/человек), добавить trailer либо зафиксировать ограничение; не догадываться об авторстве.
