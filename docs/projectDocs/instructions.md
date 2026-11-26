@@ -16,7 +16,7 @@
 - Console — `OutputType=Exe`; Tests — `IsPackable=false`, xUnit 2.9.3, `Microsoft.NET.Test.Sdk 17.14.1`, coverlet, global using `Xunit` (`Kriegsspiel.Core.Tests.csproj:11-23`).
 - Отдельного lint/typecheck/CI/`.editorconfig`/`global.json` нет; роль typecheck и warning-gate выполняет сборка.
 - Команды: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`, `dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj`. В текущем окружении `dotnet` может отсутствовать.
-- Коммитить только по явной просьбе; перед коммитом проверять `git status`, `git diff`, `git log --oneline -10`. Коммиты агентов — с атрибуцией роли (`git -c user.name=<role> -c user.email=<role>@kriegsspiel.local`; канон — `process-contract` §8).
+- Коммитить только по явной просьбе; перед коммитом проверять `git status`, `git diff`, `git log --oneline -10`. Коммиты агентов — с атрибуцией роли (`git -c user.name=<role> -c user.email=<role>@kriegsspiel.local`; канон — `process-contract` §8). Коммитить только из собственного worktree в собственную ветку запуска; общий каталог не переключает HEAD и не коммитит (изоляция и проверка — `process-contract` §5.1).
 - Технический долг вне текущей задачи фиксируется в `docs/projectDocs/tech-debt.md`; при декомпозиции его учитывают (см. `AGENTS.md`, шаблон декомпозиции).
 
 ## 3. Именование

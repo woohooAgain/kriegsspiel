@@ -36,6 +36,34 @@ description: Use in every Kriegsspiel role run to load the canonical process inv
 - `implementer` не мержит. `verifier` мержит per-task после `verified` и ветку волны в `main` при условиях.
 - Прямые коммиты в `main` запрещены. Валидация/merge — строго по одной `T-XX`, batch запрещён.
 
+### 5.1 Изоляция запусков: отдельный git worktree
+
+Цель — исключить конкурентные переключения HEAD в общем каталоге и коммиты в чужие ветки. Правило обязательно для всех ролей, которые меняют файлы или коммитят.
+
+- **Primary checkout (общий каталог репозитория) — только чтение агентом.** В нём запрещены `git checkout`/`git switch`/`git reset --hard`/`git stash` и коммиты: это меняет HEAD под другими запусками. Свои изменения вносить только в отдельном linked worktree.
+- **Один запуск = один worktree + одна собственная ветка.** Создание от актуальной базы:
+  ```sh
+  git worktree add -b <own-branch> "${KS_WORKTREE_ROOT:-/tmp/opencode}/ks-<role>-<scope>-r<N>" <base-ref>
+  ```
+  `<scope>` — `T-XX`, `wave-<N>`, `FS-*` или короткий slug цели; `<N>` — раунд. По умолчанию worktree вне репозитория (не зависит от состояния primary checkout). In-repo `.worktrees/<role>-<scope>-r<N>` допустим, только если `.worktrees/` в `.gitignore`. Продолжение в существующей ветке (раунд 2+): `git worktree add <path> <own-branch>` (без `-b`), при условии что ветка не занята другим worktree.
+- **Своя ветка (идентификация, проверяемо).** «Своя» — ровно ветка `<own-branch>`, записанная в артефактах запуска (или явно переданная предыдущим владельцем ref-ом), и checkout'нутая в worktree этого запуска. Перед каждым коммитом проверять:
+  ```sh
+  git -C <worktree> rev-parse --show-toplevel    # == <worktree>
+  git -C <worktree> rev-parse --abbrev-ref HEAD   # == <own-branch>
+  git worktree list                               # <own-branch> только в этом worktree
+  ```
+  Если HEAD ≠ `<own-branch>`, ветка занята в другом worktree или цель — чужая ветка/`main`/`master`: **не коммитить**; зафиксировать факт и эскалировать через `orchestrator`. Ветки других ролей/запусков — только чтение refs.
+- **Имена веток по конвенции сохраняются:** `task/T-XX-<slug>` (`implementer`), `wave/<N>-<slug>` (создаёт `architect`; merge в неё — только `verifier`), `docs/...`, `process/...`. Если каноническое имя роли не принадлежит — использовать `<role>/<scope>-r<N>`.
+- **Жизненный цикл worktree:**
+  1. Создать от согласованной базы; сверить `<base-ref>`/коммит.
+  2. Работать только с owned-файлами; проверки запускать в этом worktree.
+  3. Коммитить только в `<own-branch>` с атрибуцией по §8 (identity роли; trailer при риске потери identity).
+  4. Передать refs: `branch@commit`, `worktree`, handoff; без push/merge в чужие ветки.
+  5. После потребления ref (merge/проверка) удалить worktree: `git worktree remove <worktree>` (затем `git worktree prune`); ветку удалять только если влита. Если ветку надо сохранить для merge/истории — удалить только worktree, ветку оставить и указать ref.
+  6. Чужие worktrees не удалять; `git worktree prune` — только для своих.
+
+**Согласование с §8:** worktree отвечает за то, *куда* идёт коммит (своя ветка запуска); §8 — за то, *кем* он сделан (identity/trailer). Оба правила действуют вместе; §8 остаётся каноном атрибуции. **Обратной силы нет:** существующие ветки/коммиты не переписываются; старые кросс-веточные коммиты — исторический факт (пробел процесса), не повод для rebase/amend.
+
 ## 6. Качество и команды
 - Канонические проверки: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.slnx` (или `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`). Отсутствие среды — фиксировать как ограничение с доказательствами.
 - Код без комментариев, если явно не просили. Следовать `docs/projectDocs/instructions.md`.
@@ -54,7 +82,7 @@ description: Use in every Kriegsspiel role run to load the canonical process inv
 git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" commit -m "<message>"
 git -c user.name="<role>" -c user.email="<role>@kriegsspiel.local" merge --no-ff <branch> -m "merge: <...>"
 ```
-`<role>` — точное имя роли (`implementer`, `verifier`, ...). Override задаётся только на команду, чтобы роли не перетирали друг друга в общем worktree. Переменные `GIT_AUTHOR_*`/`GIT_COMMITTER_*` имеют приоритет над `-c` — в агентских запусках их не задавать (при наличии — снять/не использовать).
+`<role>` — точное имя роли (`implementer`, `verifier`, ...). Override задаётся только на команду, чтобы identity не зависела от общего `git config` и не перетирала другие роли. Переменные `GIT_AUTHOR_*`/`GIT_COMMITTER_*` имеют приоритет над `-c` — в агентских запусках их не задавать (при наличии — снять/не использовать).
 
 **Резервный способ — trailer `Made-by-Agent: <role>`** в сообщении коммита. Обязателен, когда identity может быть потеряна или переписана: squash, cherry-pick из внешней ветки, ручная правка/amend, коммиты инструментами. Для merge — вторым `-m`:
 ```sh

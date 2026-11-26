@@ -69,3 +69,14 @@
 - **Влияние на сложность:** низко (одна опция в команде коммита/merge + опциональный trailer; проверка одной командой `git log`).
 - **Результат/наблюдение:** мера внедрена в процессные документы; эффект в следующей волне — наблюдение (данных применения ещё нет). Обратной силы нет: старые коммиты не переписываются.
 - **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §8, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, ветка `process/commit-agent-attribution-r1`.
+
+## PI-005 — Изоляция запусков агентов через отдельный git worktree
+- **Статус:** applied
+- **Волны/контекст:** вне волны; процессная правка по запросу (ветка `process/agent-worktrees-r1`).
+- **Проблема (факты):** внешний `git checkout` в общем каталоге переключал HEAD во время работы; коммит `adb8ba4` (docs/rules) оказался в истории чужой ветки `process/commit-agent-attribution` (reflog: HEAD переключён `docs/rules-simplified-mvp` → `process/commit-agent-attribution` перед этим коммитом). `git branch --contains adb8ba4` подтверждает присутствие в `process/commit-agent-attribution` и `docs/rules-simplified-mvp`. Коллизия повторяющаяся; атрибуция §8 её не предотвращает (она про авторство, не про ветку).
+- **Причина/гипотеза:** агенты работали/коммитили в общем primary checkout, у запуска не было собственной ветки/worktree; HEAD менялся внешними checkout'ами, и коммит попадал в текущую (чужую) ветку.
+- **Мера:** `process-contract` §5.1 — обязательный linked worktree на запуск + собственная ветка, запрет checkout/commit в общем каталоге, проверяемая идентификация «своей» ветки, жизненный цикл worktree, handoff refs `worktree`/`branch@commit`. Ссылки на §5.1 в `.opencode/agent/*`, `file-first-handoff`, `workflows/*`, `instructions.md`; `orchestrator` требует эти refs. Имена веток и §8 сохранены; `.gitignore` игнорирует in-repo `.worktrees/`.
+- **Критерий проверки эффекта:** ни один коммит нового запуска не попадает в ветку, которую запуск не создавал/не получил ref-ом; в Status Envelope есть `worktree` + `branch@commit`; `git worktree list` показывает одну ветку на worktree; в primary checkout нет checkout/commit агентов; `verifier` не находит кросс-веточных коммитов.
+- **Влияние на сложность:** средне (одна команда `git worktree add/remove` на запуск + 2 refs в отчёте; убирает ручные переключения и разбор коллизий).
+- **Результат/наблюдение:** мера внедрена в процессные документы; эффект в следующей волне — наблюдение (данных применения ещё нет). Обратной силы нет: `adb8ba4`/история не переписываются, старые кросс-веточные коммиты — исторический факт.
+- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §5.1, `.opencode/skills/file-first-handoff/SKILL.md`, `.opencode/agent/*`, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, `adb8ba4`, ветка `process/agent-worktrees-r1`, PI-004.
