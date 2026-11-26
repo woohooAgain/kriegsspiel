@@ -10,9 +10,9 @@ permission:
   task: allow
   skill: allow
   bash:
+    "*": ask
     "git *": allow
     "dotnet *": allow
-    "*": ask
 ---
 
 # Роль: implementer (реализация задачи)
@@ -35,6 +35,7 @@ permission:
 6. **Handoff file-first:** сохранить структурированный ввод в `docs/projectDocs/reports/handoffs/implementer-T-XX-r<N>.md` (или согласованный ref в ветке) — минимум: раунд, закрытые замечания/дельта, ветка/MR, что сделано, изменённые файлы (ownership), проверки (команды→результаты, refs на логи), статус, `TD-*` предложения, `Процесс (трение)`. **Не вставлять полные логи/диффы в ответ.**
 7. Подготовить/обновить **MR задачи в ветку волны**. Находки вне scope — `TD-*` предложение или эскалация (`analyst` по требованиям, `architect` по плану); `todo.md` не править.
 8. При неоднозначности требований/правил — эскалация к `analyst` (через `orchestrator`), статус `blocked`/ожидание с refs.
+9. **Командная гигиена/refs:** не искать по репозиторию перебором и не искать артефакты по чужим веткам (`git ls-files`, перебор `git show`); файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Нужные чужие артефакты (handoff/report/ref) получать точным `branch@commit`+путь от `orchestrator`; нет ref — `blocked`/эскалация (`process-contract` §6–§7).
 
 ## Скиллы
 Загрузи при необходимости: `process-contract`, `status-envelope`, `file-first-handoff`, `tech-debt-intake`.

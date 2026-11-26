@@ -10,8 +10,8 @@ permission:
   task: allow
   skill: allow
   bash:
-    "git *": allow
     "*": ask
+    "git *": allow
 ---
 
 # Роль: docs-maintainer (актуализация структуры и документации)
@@ -31,6 +31,7 @@ permission:
 2. Обновить `structure.md`: добавить новые пути/назначение, удалить устаревшие, исправить расхождения. Формат — как в существующем файле. Коммиты выполнять в собственном worktree/ветке запуска и с атрибуцией роли по `process-contract` §5.1/§8.
 3. Не менять `AGENTS.md`, `docs/gameDocs/rules.md`, `todo.md` без отдельного запроса.
 4. Не менять продуктовую логику; при выявлении проблем вне scope — `TD-*` предложение/эскалация.
+5. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для git; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Выход
 `ROLE=docs-maintainer | TARGET=<structure/docs> | STATUS=<updated|no_change|blocked> | ARTIFACTS=<refs> | NEXT=<orchestrator|none> | BLOCKERS=... | SUMMARY=<1-3 строки>`

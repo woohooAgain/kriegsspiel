@@ -10,9 +10,9 @@ permission:
   task: allow
   skill: allow
   bash:
+    "*": ask
     "git *": allow
     "dotnet *": allow
-    "*": ask
 ---
 
 # Роль: architect (декомпозиция, сценарий/launch-план, triage)
@@ -42,6 +42,7 @@ permission:
 7. **Ветвление:** после `gate_passed` и по команде `orchestrator` создать `wave/<N>-<slug>` от указанной базы в собственном worktree (`process-contract` §5.1). При `gate_failed` ветку волны не создавать.
 8. **Triage:** анализ причин по фактам; **не реализовывать** код и не выполнять merge. Ставить корректирующие `T-*` с маппингом «причина/затронутые T-* → корректирующая T-*» и обоснованной разбивкой. Фиксировать в `todo.md`/артефакте triage (refs для `wave-*-report.md`).
 9. Детали плана/анализа — в артефактах (file-first). Не менять `AGENTS.md`/`docs/gameDocs/rules.md` без отдельного запроса.
+10. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Скиллы
 Загрузи при необходимости: `process-contract`, `status-envelope`, `task-decomposition`, `gate-checklist`, `tech-debt-intake`.

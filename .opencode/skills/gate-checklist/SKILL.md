@@ -15,6 +15,7 @@ description: Use when the verifier runs the pre-wave verifiability gate in Krieg
 5. **Launch-план:** группы параллельности без пересечений ownership, порядок/зависимости, refs для `orchestrator`.
 6. **Окружение:** проверить и зафиксировать доступность dotnet, TTY/`script` (для Spectre CLI), remote/`gh`, CI. Ограничения — как ограничения с доказательствами, не как успех.
 7. **Трассировка:** `Покрывает` ссылается на существующие `FS-*`/`§…`/K/B/D.
+8. **Permission-детерминизм (PI-017/PI-020):** если волна/задача затрагивает `.opencode/agent/*` или permission-конфиг, приложить ref на `opencode debug agent <role>` и подтвердить порядок `*: ask` → конкретные allow. Для permission-чувствительных сценариев — smoke на свежем процессе (или после сброса approvals) с проверкой лога на `message=asking`. «У меня прошло» (из-за runtime-approvals) не является доказательством.
 
 ## Результат
 - Всё выполнено → `gate_passed` (refs на план/сценарий/launch-план).
