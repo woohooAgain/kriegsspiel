@@ -1,157 +1,227 @@
+using Kriegsspiel.Core.Ai;
 using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Domain;
 using Kriegsspiel.Core.Reporting;
-using Kriegsspiel.Core.Tests.Fixtures;
 
 namespace Kriegsspiel.Core.Tests;
 
 public class ReportTests
 {
     [Fact]
-    public void Factory_NormalSourcesNeverGetConfidenceThree()
+    public void Confidence_MapsToRulesV04()
     {
-        var factory = new ReportFactory(new FrictionTable(), new Random(7));
+        var factory = new ReportFactory(new FrictionTable());
 
-        Assert.Equal(2, factory.Create(100, 120, "S1", 3).Confidence);
-        Assert.Equal(1, factory.Create(100, 120, "S1", 0, ReportKind.Silence).Confidence);
-        Assert.Equal(3, factory.Create(100, 120, "SCOUT", 3, ReportKind.Recon).Confidence);
+        Assert.Equal(3, factory.Create(100, 0, "U1", 1, ReportKind.Arrival).Confidence);
+        Assert.Equal(3, factory.Create(100, 0, "U1", 1, ReportKind.Impossible).Confidence);
+        Assert.Equal(3, factory.Create(100, 0, "U1", 1, ReportKind.Request).Confidence);
+        Assert.Equal(2, factory.Create(100, 0, "U1", 3, ReportKind.Contact).Confidence);
+        Assert.Equal(2, factory.Create(100, 0, "U1", 9, ReportKind.QueryAnswer).Confidence);
+        Assert.Equal(1, factory.Create(100, 0, "U1", 1, ReportKind.QueryAnswer).Confidence);
+        Assert.Equal(3, factory.Create(100, 0, "U1", 3, ReportKind.Recon).Confidence);
+        Assert.Equal(1, factory.Create(100, 0, "U1", 2, ReportKind.Recon).Confidence);
+        Assert.Equal(3, factory.Create(100, 0, "U1", 9, ReportKind.Status).Confidence);
+        Assert.Equal(1, factory.Create(100, 0, "U1", 0, ReportKind.Status).Confidence);
     }
 
     [Fact]
-    public void Factory_HonestyInflatesStrengthAndHidesLosses()
+    public void Factory_SetsRequiredFieldsAndRejectsOutOfRangeConfidence()
     {
-        var source = NewUnit("U1", 0);
-        var factory = new ReportFactory(new FrictionTable(), new Random(7));
-        var facts = new Dictionary<string, string>
-        {
-            ["strength"] = "100",
-            ["losses"] = "40",
-            ["initialStrength"] = "100"
-        };
+        var factory = new ReportFactory(new FrictionTable());
+
+        var report = factory.Create(
+            100, 130, "U1", 2, ReportKind.Contact, "контакт", "zone:B", Faction.Red, "XO");
+
+        Assert.True(report.HasRequiredFields);
+        Assert.Equal(100, report.EventMinute);
+        Assert.Equal(130, report.DeliveryMinute);
+        Assert.Equal("U1", report.SourceId);
+        Assert.Equal(2, report.Confidence);
+        Assert.Equal("zone:B", report.FactKey);
+        Assert.Equal(Faction.Red, report.SourceFaction);
+        Assert.Equal("XO", report.ReportedBy);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => Report.Create(100, 130, "U1", 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Report.Create(100, 130, "U1", 4));
+    }
+
+    [Fact]
+    public void Factory_ReconResultHasNoReportedOwnStrength()
+    {
+        var factory = new ReportFactory(new FrictionTable());
+        var source = NewUnit("U1", honesty: 3);
+
+        var recon = factory.CreateWithHonesty(
+            100, 0, source, 3, ReportKind.Recon, observedZoneId: "B");
+        var contact = factory.CreateWithHonesty(
+            100, 0, source, 2, ReportKind.Contact, observedZoneId: "B");
+
+        Assert.Null(recon.ReportedOwnStrength);
+        Assert.Equal(100, contact.ReportedOwnStrength);
+    }
+
+    [Theory]
+    [InlineData(0, 136, 64)]
+    [InlineData(1, 124, 76)]
+    [InlineData(2, 112, 88)]
+    [InlineData(3, 100, 100)]
+    public void Factory_HonestyDistortsStrengthsByTwelvePercent(int honesty, int expectedOwn, int expectedEnemy)
+    {
+        var factory = new ReportFactory(new FrictionTable());
+        var source = NewUnit("U1", honesty, 100);
+        var enemies = new[] { NewUnit("E1", 3, 100, Faction.Red) };
 
         var report = factory.CreateWithHonesty(
-            100, 120, source, 2, ReportKind.Status, "потери 40", "zone:B", facts);
+            100, 0, source, 2, ReportKind.Contact,
+            observedZoneId: "B", observedEnemies: enemies);
 
-        Assert.Equal("145", report.Facts["strength"]);
-        Assert.Equal("22", report.Facts["losses"]);
-        Assert.Equal("держимся", report.Facts["status"]);
-        Assert.Equal("держимся", report.Text);
+        Assert.Equal(expectedOwn, report.ReportedOwnStrength);
+        Assert.Equal(expectedEnemy, report.ReportedEnemyStrength);
     }
 
     [Fact]
-    public void Factory_HonestyThreeKeepsNumbersExact()
+    public void Factory_EnemyStrengthIsZeroForReconFailAndNoContact()
     {
-        var source = NewUnit("U1", 3);
-        var factory = new ReportFactory(new FrictionTable(), new Random(7));
-        var facts = new Dictionary<string, string> { ["strength"] = "100", ["losses"] = "40" };
+        var factory = new ReportFactory(new FrictionTable());
+        var source = NewUnit("U1", honesty: 2);
+        var enemies = new[] { NewUnit("E1", 3, 100, Faction.Red) };
 
-        var report = factory.CreateWithHonesty(
-            100, 120, source, 2, ReportKind.Status, "потери 40", "zone:B", facts);
+        var reconFail = factory.CreateWithHonesty(
+            100, 0, source, 1, ReportKind.Recon,
+            observedZoneId: "B", observedEnemies: enemies);
+        var noContact = factory.CreateWithHonesty(
+            100, 0, source, 2, ReportKind.Contact,
+            observedZoneId: "B", observedEnemies: Array.Empty<Unit>());
 
-        Assert.Equal("100", report.Facts["strength"]);
-        Assert.Equal("40", report.Facts["losses"]);
-        Assert.Equal("потери 40", report.Text);
-        Assert.False(report.Facts.ContainsKey("status"));
+        Assert.Null(reconFail.ReportedOwnStrength);
+        Assert.Equal(0, reconFail.ReportedEnemyStrength);
+        Assert.Equal(0, noContact.ReportedEnemyStrength);
     }
 
     [Fact]
-    public void LossProbability_IsBelowOrderLossAndGrowsWithHostility()
+    public void Delivery_RecordsLostReportWhenRandomBelowProbability()
     {
-        var friction = new FrictionTable();
-        var neutralReport = ReportDeliveryResolver.ReportLossProbability(friction, 0);
-        var hostileReport = ReportDeliveryResolver.ReportLossProbability(friction, 1);
-        var hostileOrder = ReportDeliveryResolver.OrderLossProbability(friction, 1);
-
-        Assert.Equal(0.03, neutralReport, 5);
-        Assert.True(hostileReport > neutralReport);
-        Assert.True(hostileReport < hostileOrder);
-        Assert.Equal(0.03, ReportDeliveryResolver.ReportLossProbability(friction, -1), 5);
-    }
-
-    [Fact]
-    public void TryDeliver_UsesRouteHostilityAndRecordsLoss()
-    {
-        var friction = new FrictionTable();
         var state = NewState();
-        state.Zones["B"].ControllingFaction = Faction.Red;
-        var report = Report.Create(100, 120, "S1", 2, ReportKind.Status, "contact", "zone:B");
-        var resolver = new ReportDeliveryResolver(friction, new SequenceRandomSource(0.0));
+        var unit = NewUnit("U1", 3);
+        var report = Report.Create(100, 0, "U1", 2, ReportKind.Contact);
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new SequenceRandomSource(0.0));
 
-        Assert.False(resolver.TryDeliver(report, state, "A", "B"));
+        Assert.False(resolver.TryDeliver(report, state, unit));
+
         Assert.Single(state.LostReports);
         Assert.Empty(state.InTransitReports);
         Assert.Contains(state.EventLog, e => e is ReportLost lost && lost.ReportId == report.Id);
-
-        var deliveredState = NewState();
-        var delivered = new ReportDeliveryResolver(friction, new SequenceRandomSource(0.99));
-        Assert.True(delivered.TryDeliver(report, deliveredState, "A", "B"));
-        Assert.Single(deliveredState.InTransitReports);
-        Assert.Empty(deliveredState.LostReports);
     }
 
     [Fact]
-    public void Narrator_PreservesStructuredFieldsAndUsesOnlyReportedFacts()
+    public void Delivery_MovesReportIntoTransitWhenNotLost()
     {
-        var templates = TestContent.Bundle().Reports;
-        var fact = Report.Create(
-            100, 120, "S1", 2, ReportKind.Status, "исходный текст", "fact:owner",
-            Faction.Red, "XO",
-            new Dictionary<string, string>
-            {
-                ["zoneId"] = "B",
-                ["unit"] = "SCOUT_REPORTED",
-                ["strength"] = "77",
-                ["value"] = "Red"
-            });
-        var truthUnit = NewUnit("TRUE_UNIT", 3);
-        truthUnit.LocationZoneId = "A";
-        truthUnit.Strength = 999;
-        var ctx = new ReportContext
-        {
-            Fact = fact,
-            Unit = truthUnit,
-            Templates = templates,
-            Rng = new Random(1)
-        };
+        var state = NewState();
+        var unit = NewUnit("U1", 3);
+        var report = Report.Create(100, 0, "U1", 2, ReportKind.Contact);
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new SequenceRandomSource(0.99));
 
-        var narrated = new TemplateReportNarrator().Narrate(ctx);
+        Assert.True(resolver.TryDeliver(report, state, unit));
 
-        Assert.Equal(fact.Id, narrated.Id);
-        Assert.Equal(100, narrated.EventMinute);
-        Assert.Equal(120, narrated.DeliveryMinute);
-        Assert.Equal("S1", narrated.SourceId);
-        Assert.Equal(2, narrated.Confidence);
-        Assert.Equal("fact:owner", narrated.FactKey);
-        Assert.Equal(Faction.Red, narrated.SourceFaction);
-        Assert.Equal("XO", narrated.ReportedBy);
-        Assert.Equal(fact.Facts, narrated.Facts);
-        Assert.Contains("SCOUT_REPORTED", narrated.Text, StringComparison.Ordinal);
-        Assert.Contains("77%", narrated.Text, StringComparison.Ordinal);
-        Assert.Contains("уверенность 2", narrated.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("TRUE_UNIT", narrated.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("999", narrated.Text, StringComparison.Ordinal);
+        Assert.Single(state.InTransitReports);
+        Assert.Empty(state.LostReports);
+        Assert.Empty(state.EventLog.OfType<ReportLost>());
     }
 
     [Fact]
-    public void Narrator_MetadataOverridesMisleadingFactValues()
+    public void Delivery_UsesEventMinutePlusLegBackWithMinimumFive()
+    {
+        var state = NewState();
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new SequenceRandomSource());
+
+        var nodeReport = Report.Create(100, 0, "U1", 2, ReportKind.Contact);
+        Assert.True(resolver.TryDeliver(nodeReport, state, NewUnit("U1", 3, 100, Faction.Blue, "B")));
+        Assert.Equal(130, nodeReport.DeliveryMinute);
+
+        var shortReport = Report.Create(100, 0, "U2", 2, ReportKind.Contact);
+        Assert.True(resolver.TryDeliver(shortReport, state, NewUnit("U2", 3, 100, Faction.Blue, "C")));
+        Assert.Equal(105, shortReport.DeliveryMinute);
+
+        var onEdge = NewUnit("U3", 3, 100, Faction.Blue, "HQ");
+        onEdge.IsOnEdge = true;
+        onEdge.EdgeFromZoneId = "HQ";
+        onEdge.EdgeToZoneId = "B";
+        var edgeReport = Report.Create(100, 0, "U3", 2, ReportKind.Contact);
+        Assert.True(resolver.TryDeliver(edgeReport, state, onEdge));
+        Assert.Equal(130, edgeReport.DeliveryMinute);
+    }
+
+    [Fact]
+    public void Delivery_FixesLegBackAtEventAndDoesNotRecompute()
+    {
+        var state = NewState();
+        var unit = NewUnit("U1", 3, 100, Faction.Blue, "B");
+        var report = Report.Create(100, 0, "U1", 2, ReportKind.Contact);
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new SequenceRandomSource());
+
+        Assert.True(resolver.TryDeliver(report, state, unit));
+        Assert.Equal(130, report.DeliveryMinute);
+        Assert.Equal("30", report.Facts["tLegBack"]);
+
+        unit.LocationZoneId = "C";
+        Assert.True(resolver.TryDeliver(report, state, unit));
+        Assert.Equal(130, report.DeliveryMinute);
+        Assert.Single(state.InTransitReports);
+        Assert.Equal(5, ReportDeliveryResolver.ResolveLegBackMinutes(state, unit));
+    }
+
+    [Fact]
+    public void Delivery_KeepsEveryVersionWithoutMerging()
+    {
+        var state = NewState();
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new SequenceRandomSource());
+        var factory = new ReportFactory(new FrictionTable());
+        var source = NewUnit("U1", 3);
+        var facts = new Dictionary<string, string> { ["zoneId"] = "B", ["value"] = "Red" };
+
+        var first = factory.CreateWithHonesty(
+            100, 0, source, 2, ReportKind.Contact, "v1", "zone:B", facts,
+            observedZoneId: "B", honesty: 3);
+        var second = factory.CreateWithHonesty(
+            100, 0, source, 2, ReportKind.Contact, "v2", "zone:B", facts,
+            observedZoneId: "B", honesty: 0);
+
+        Assert.True(resolver.TryDeliver(first, state, source));
+        Assert.True(resolver.TryDeliver(second, state, source));
+
+        Assert.Equal(2, state.InTransitReports.Count);
+        Assert.Equal(2, state.InTransitReports.Select(report => report.Id).Distinct().Count());
+        Assert.All(state.InTransitReports, report => Assert.Equal("zone:B", report.FactKey));
+        Assert.NotEqual(first.ReportedOwnStrength, second.ReportedOwnStrength);
+    }
+
+    [Fact]
+    public void Delivery_IsDeterministicForSameSeed()
+    {
+        Assert.Equal(RunDelivery(42), RunDelivery(42));
+    }
+
+    [Fact]
+    public void Narrator_PreservesV04Structure()
     {
         var templates = new ReportTemplates
         {
             ByKind = new Dictionary<string, List<string>>
             {
-                ["Status"] = ["{sourceId}|{eventMinute}|{deliveryMinute}|{confidence}|{factKey}"]
+                ["Contact"] = ["{sourceId}|{eventMinute}|{deliveryMinute}|{confidence}|{factKey}"]
             }
         };
         var fact = Report.Create(
-            90, 130, "REAL_SOURCE", 2, ReportKind.Status, "", "fact:real",
+            90, 130, "REAL_SOURCE", 2, ReportKind.Contact, "", "fact:real",
             Faction.Blue, null,
             new Dictionary<string, string>
             {
                 ["sourceId"] = "FAKE_SOURCE",
-                ["confidence"] = "9",
-                ["eventMinute"] = "1",
-                ["deliveryMinute"] = "2"
-            });
+                ["confidence"] = "9"
+            },
+            observedZoneId: "B",
+            reportedOwnStrength: 77,
+            reportedEnemyStrength: 33);
         var ctx = new ReportContext
         {
             Fact = fact,
@@ -163,29 +233,71 @@ public class ReportTests
         var narrated = new TemplateReportNarrator().Narrate(ctx);
 
         Assert.Equal("REAL_SOURCE|90|130|2|fact:real", narrated.Text);
-        Assert.Equal(2, narrated.Confidence);
+        Assert.Equal(fact.Id, narrated.Id);
+        Assert.Equal("B", narrated.ObservedZoneId);
+        Assert.Equal(77, narrated.ReportedOwnStrength);
+        Assert.Equal(33, narrated.ReportedEnemyStrength);
     }
 
-    private static Unit NewUnit(string id, int honesty) => new()
+    private static List<bool> RunDelivery(int seed)
+    {
+        var state = NewState();
+        var unit = NewUnit("U1", 3);
+        var resolver = new ReportDeliveryResolver(new FrictionTable(), new DeterministicRandomSource(seed));
+        var delivered = new List<bool>();
+
+        for (var minute = 100; minute < 120; minute++)
+        {
+            var report = Report.Create(minute, 0, unit.Id, 2, ReportKind.Contact);
+            delivered.Add(resolver.TryDeliver(report, state, unit, reportLossProbability: 0.5));
+        }
+
+        return delivered;
+    }
+
+    private static Unit NewUnit(
+        string id,
+        int honesty,
+        int strength = 100,
+        Faction faction = Faction.Blue,
+        string zone = "B") => new()
     {
         Id = id,
         Name = id,
-        LocationZoneId = "A",
-        InitialStrengthSnapshot = 100,
-        Strength = 100,
+        Faction = faction,
+        LocationZoneId = zone,
+        InitialStrengthSnapshot = strength,
+        Strength = strength,
         Traits = new CommanderTraits(1, 1, 1, honesty)
     };
 
     private static GameState NewState() => new()
     {
         ScenarioId = "s",
+        HqZoneId = "HQ",
         Clock = new Clock(0),
-        Zones = new()
+        Zones = new Dictionary<string, Zone>
         {
-            ["A"] = new Zone { Id = "A", Name = "A", Terrain = TerrainType.Open },
-            ["B"] = new Zone { Id = "B", Name = "B", Terrain = TerrainType.Forest }
+            ["HQ"] = new Zone
+            {
+                Id = "HQ",
+                Name = "HQ",
+                CourierMinutes = { ["B"] = 30, ["C"] = 2 }
+            },
+            ["B"] = new Zone
+            {
+                Id = "B",
+                Name = "B",
+                CourierMinutes = { ["HQ"] = 30 }
+            },
+            ["C"] = new Zone
+            {
+                Id = "C",
+                Name = "C",
+                CourierMinutes = { ["HQ"] = 2 }
+            }
         },
-        Units = new(),
+        Units = new Dictionary<string, Unit>(),
         Knowledge = new PlayerKnowledge()
     };
 }
