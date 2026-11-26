@@ -10,10 +10,10 @@ permission:
   task: allow
   skill: allow
   bash:
+    "*": ask
     "dotnet *": allow
     "git *": allow
     "script *": allow
-    "*": ask
 ---
 
 # Роль: scenario-tester (сценарный/интеграционный прогон)
@@ -31,6 +31,7 @@ permission:
 3. Сверить с `rules.md`/`FS-*`/сценарием волны; расхождения — факты с воспроизведением и refs.
 4. Не править код, не выполнять merge, не править `todo.md`. Находки вне scope — `TD-*` предложение/эскалация.
 5. Для wave-проверки действовать в рамках сценария `architect`; при сбоях — факты/refs для triage `architect` (без исправлений).
+6. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для dotnet/git/script; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Скиллы
 Загрузи при необходимости: `process-contract`, `status-envelope`, `scenario-evidence`, `tech-debt-intake`.

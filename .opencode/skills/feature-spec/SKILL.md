@@ -5,7 +5,7 @@ description: Use when the analyst writes or updates a Kriegsspiel FS-* feature s
 
 # Feature spec (FS-*)
 
-Каталог: `docs/gameDocs/featureSpecs/`. `FS-*` — вход для `architect`; не заменяет `todo.md` и не является каноном правил.
+Каталог: `docs/gameDocs/featureSpecs/`. `FS-*` — вход для `architect`; не заменяет `todo.md` и не является каноном правил. Новые идеи ведутся в `docs/gameDocs/featureBacklog.md` (`BL-*`, caretaker/groomer `analyst`); при происхождении из backlog указывать `BL-###` в `Источник` и обратную ссылку `→ FS-*` в backlog.
 
 ## Статусы
 `draft | in_review | ready_for_decomposition | blocked`.

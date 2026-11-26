@@ -52,7 +52,7 @@ description: Use in every Kriegsspiel role run to load the canonical process inv
   git -C <worktree> rev-parse --abbrev-ref HEAD   # == <own-branch>
   git worktree list                               # <own-branch> только в этом worktree
   ```
-  Если HEAD ≠ `<own-branch>`, ветка занята в другом worktree или цель — чужая ветка/`main`/`master`: **не коммитить**; зафиксировать факт и эскалировать через `orchestrator`. Ветки других ролей/запусков — только чтение refs.
+  Если HEAD ≠ `<own-branch>`, ветка занята в другом worktree или цель — чужая ветка/`main`/`master`: **не коммитить**; зафиксировать факт и эскалировать через `orchestrator`. Ветки других ролей/запусков — только чтение refs; читать чужие артефакты по переданному `branch@commit`+путь, не разыскивать их перебором (`git ls-files`, перебор `git show`) — нет ref ⇒ `blocked`/эскалация, не discovery (`process-contract` §7).
 - **Имена веток по конвенции сохраняются:** `task/T-XX-<slug>` (`implementer`), `wave/<N>-<slug>` (создаёт `architect`; merge в неё — только `verifier`), `docs/...`, `process/...`. Если каноническое имя роли не принадлежит — использовать `<role>/<scope>-r<N>`.
 - **Жизненный цикл worktree:**
   1. Создать от согласованной базы; сверить `<base-ref>`/коммит.
@@ -68,11 +68,14 @@ description: Use in every Kriegsspiel role run to load the canonical process inv
 - Канонические проверки: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.slnx` (или `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj`). Отсутствие среды — фиксировать как ограничение с доказательствами.
 - Код без комментариев, если явно не просили. Следовать `docs/projectDocs/instructions.md`.
 - `AGENTS.md` и `docs/gameDocs/rules.md` не менять без отдельного явного запроса с подтверждением.
+- **Командная гигиена (PI-018):** не использовать `cd` — передавать `workdir`; файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet/script; одна команда — одна цель (не объединять разнородные команды через `&&`/пайпы); не использовать `| head` (ограничивать вывод параметром команды или доверять truncation bash-инструмента). Это уменьшает permission-поверхность и вариативность.
+- **Порядок `permission.bash` (PI-017):** в `.opencode/agent/*` широкое правило `"*": ask` должно идти **первым**, конкретные allow (`"git *"`, `"dotnet *"`, `"script *"`) — после (opencode: last-match-wins). Проверка: `opencode debug agent <role>` показывает `*: ask` до конкретных allow; изменения permission не принимаются по принципу «у меня прошло» (PI-020).
 
 ## 7. Артефакты
 - Канонические отчёты `docs/projectDocs/reports/**` — владелец `verifier`, коммит после проверок.
 - Handoff — file-first (`docs/projectDocs/reports/handoffs/...`); `.tmp` — только локальный черновик, не транспорт.
-- Процессные фрикции/меры → `PI-*`/отчёты (`process-master`); продуктовые/кодовые находки вне scope → `TD-*` (`tech-debt.md`).
+- Процессные фрикции/меры → `PI-*`/отчёты (`process-master`); продуктовые/кодовые находки вне scope → `TD-*` (`tech-debt.md`); новые идеи фич → `featureBacklog.md` (`BL-*`, caretaker `analyst`). Дерево маршрутизации — `docs/projectDocs/workflows/README.md`.
+- **Ref-driven (PI-019):** handoff/Status Envelope всегда называет `worktree`, `branch@commit` и путь к артефакту; потребитель читает строго по этому ref, без discovery чужих веток. Если нужный ref не передан — `blocked`/эскалация через `orchestrator`, а не перебор веток.
 
 ## 8. Атрибуция коммитов по роли агента
 Цель — по истории git однозначно видеть, какая роль сделала коммит/merge. Правило действует для всех коммитящих ролей: `analyst`, `architect`, `implementer`, `verifier`, `scenario-tester`, `process-master`, `rules-auditor`, `docs-maintainer`. `orchestrator` и `repo-navigator` коммитов не делают.

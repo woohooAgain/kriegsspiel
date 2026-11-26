@@ -10,8 +10,8 @@ permission:
   task: allow
   skill: allow
   bash:
-    "git *": allow
     "*": ask
+    "git *": allow
 ---
 
 # Роль: process-master (ретро волны и улучшение процесса)
@@ -31,6 +31,7 @@ permission:
 4. При необходимости внести/предложить правки процессных описаний, агентов, скиллов (`workflows/*`, `reports/README.md`, `templates/*`, `.opencode/*`, релевантные `instructions.md` части) в рамках полномочий. Все коммиты выполнять в собственном worktree/ветке запуска и с атрибуцией роли по `process-contract` §5.1/§8. **Не менять `AGENTS.md` и `docs/gameDocs/rules.md` без отдельного запроса** — эскалировать.
 5. Не чинить продуктовый код/тесты и не подменять triage причин сбоев `architect` (продуктовые corrective `T-*` — зона `architect`).
 6. Процессные находки — в `PI-*`/отчётах; продуктовые/кодовые вне scope — в `TD-*`.
+7. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для git; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Скиллы
 Загрузи при необходимости: `process-contract`, `status-envelope`, `process-retro`, `report-writing`, `tech-debt-intake`.
