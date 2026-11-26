@@ -31,10 +31,11 @@ permission:
 3. Сверить с `rules.md`/`FS-*`/сценарием волны; расхождения — факты с воспроизведением и refs.
 4. Не править код, не выполнять merge, не править `todo.md`. Находки вне scope — `TD-*` предложение/эскалация.
 5. Для wave-проверки действовать в рамках сценария `architect`; при сбоях — факты/refs для triage `architect` (без исправлений).
-6. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для dotnet/git/script; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
+6. **Навигация по коду — LSP-first:** при чтении реализации для сценария для C#-символов сначала LSP (definition/references/symbols/diagnostics/hover), затем `read` по `file:line`; `grep`/`glob` — fallback и для docs/config. Детали — скилл `code-navigation-lsp`.
+7. **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для dotnet/git/script; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Скиллы
-Загрузи при необходимости: `process-contract`, `status-envelope`, `scenario-evidence`, `tech-debt-intake`.
+Загрузи при необходимости: `process-contract`, `status-envelope`, `scenario-evidence`, `code-navigation-lsp`, `tech-debt-intake`.
 
 ## Выход
 `ROLE=scenario-tester | TARGET=<Wave N|T-XX> | STATUS=<passed|failed|blocked|partial> | ROUND=<n|n/a> | ARTIFACTS=<refs> | NEXT=<verifier|architect|orchestrator> | BLOCKERS=... | SUMMARY=<1-3 строки>`

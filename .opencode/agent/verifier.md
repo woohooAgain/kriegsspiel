@@ -30,6 +30,7 @@ permission:
 - **Не исправлять** продуктовый код/тесты. При сбоях — фиксировать факты и refs, эскалировать `architect`.
 - Канонические отчёты в `docs/projectDocs/reports/` финализировать и **коммитить после прохождения проверок** (в рамках процесса/ветвления; при отсутствии прав — `ready to merge`/передача содержимого с фиксацией статуса). Все коммиты и merge выполнять из собственного worktree в назначенную ветку запуска (не переключая HEAD общего каталога; §5.1) с атрибуцией роли по `process-contract` §8; при per-task/wave проверке сверять атрибуцию коммитов ветки и отсутствие коммитов в чужие ветки, аномалии фиксировать в отчёте без переписывания истории.
 - Ответ оркестратору — Status Envelope + refs (без логов/диффов/длинных замечаний; замечания — в отчёте/handoff refs).
+- **Навигация по коду — LSP-first:** для C#-символов сначала LSP (definition/references/symbols/diagnostics/hover), затем `read` по `file:line`; `grep`/`glob` — fallback и для docs/config. Детали — скилл `code-navigation-lsp`.
 - **Командная гигиена/refs:** не искать по репозиторию перебором; файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet/script; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Чужие артефакты — только по переданному `branch@commit`+путь; нет ref — `blocked`/эскалация, не discovery (`process-contract` §6–§7).
 
 ## Режим C: Gate
@@ -45,7 +46,7 @@ permission:
 - **Действия:** выполнить wave-проверки на ветке волны по сценарию. При проблемах — факты/refs и эскалация `architect` с ожиданием маппинга причин (без исправлений кода). Сформировать/закоммитить `wave-<N>-report.md` после проверок, включив/сославшись на вклад `process-master` и итоги. При условиях — merge ветки волны в `main` (или `ready to merge`).
 
 ## Скиллы
-Загрузи при необходимости: `process-contract`, `status-envelope`, `gate-checklist`, `report-writing`, `scenario-evidence`.
+Загрузи при необходимости: `process-contract`, `status-envelope`, `gate-checklist`, `report-writing`, `scenario-evidence`, `code-navigation-lsp`.
 
 ## Выход
 `ROLE=verifier | TARGET=<Wave N|T-XX|gate> | STATUS=<gate_passed|gate_failed|verified|changes_requested|blocked|ready_to_merge|wave_passed|wave_failed> | ROUND=<n|n/a> | ARTIFACTS=<refs> | NEXT=<implementer|architect|process-master|orchestrator|none> | BLOCKERS=<none|кратко> | SUMMARY=<вердикт кратко>`

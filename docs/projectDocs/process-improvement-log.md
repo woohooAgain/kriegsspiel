@@ -191,5 +191,16 @@
 - **Результат/наблюдение:** не внедрено — вне полномочий `process-master` (нужен отдельный запуск `architect`); блокер зафиксирован.
 - **Ссылки:** `docs/projectDocs/todo.md` (read-only для process-master), `.opencode/agent/architect.md`, `process-contract` §4.
 
+## PI-023 — LSP-first навигация по коду в инструкциях ролей
+- **Статус:** applied
+- **Волны/контекст:** вне волны; harness-инструкции для субагентов, работающих с кодом; ветка `process/agent-lsp-instructions-r1`.
+- **Проблема (факты):** LSP в проекте подключён и работает, но ролевые карточки/скиллы не задавали порядок навигации; для поиска C#-символов оставались `grep`/`glob`/`read`, что даёт перебор файлов, лишний контекст и недетерминированный результат вместо точных `file:line`/diagnostics.
+- **Причина/гипотеза:** правило отсутствовало в каноническом процессе; роли не имели короткой ссылки на LSP-first, а каждая карточка отдельно описывала только гигиену `read`/`grep`/`glob`.
+- **Мера:** новый скилл `.opencode/skills/code-navigation-lsp/SKILL.md` (LSP-first порядок, fallback для docs/config, достаточный результат, запрет угадывания/перебора); короткая ссылка в `.opencode/skills/process-contract/SKILL.md` §6 и карточках `implementer`/`verifier`/`scenario-tester`/`repo-navigator`; лончеры `implementer-take-task`/`verifier-review`/`scenario-tester-run` загружают скилл и фиксируют LSP-first в промпте.
+- **Критерий проверки эффекта:** в новых запусках поиск C#-символов начинается с LSP (definition/references/symbols) и даёт `file:line` (+ diagnostics при правках); `grep`/`glob` используются для docs/config или как fallback; нет перебора файлов/`git ls-files` при доступном LSP; при недоступном LSP ограничение фиксируется явно.
+- **Влияние на сложность:** низко (один короткий скилл + ссылки; без новых статусов/permission-правил; формат Status Envelope не меняется).
+- **Результат/наблюдение:** применено в ветке `process/agent-lsp-instructions-r1`; эффект в следующих запусках — наблюдение (данных применения ещё нет). **Обратной силы нет:** старые артефакты/инструкции не переписываются, правило действует с момента изменения.
+- **Ссылки:** `.opencode/skills/code-navigation-lsp/SKILL.md`, `.opencode/skills/process-contract/SKILL.md` §6, `.opencode/agent/{implementer,verifier,scenario-tester,repo-navigator}.md`, `.opencode/command/{implementer-take-task,verifier-review,scenario-tester-run}.md`.
+
 ## Зарезервированные номера (не переиспользовать)
 - **PI-006 … PI-012** — кандидаты из `docs/projectDocs/reports/handoffs/process-master-proposals-r1.md` (merge-контур: владелец merge/no-orphan-branch, tighten `ready_to_merge`, inventory веток, gate-остатки, `main`/`master`, merge vs push; EOL-шум). В этом запуске **не внедрялись**: требуют решений Q1–Q3/Q6 (человек/orchestrator) и/или отдельного scope. Номера зарезервированы, чтобы не переиспользовать; обратной силы нет.
