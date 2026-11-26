@@ -18,20 +18,32 @@ public static class GameStateFactory
 {
     public static GameState FromBundle(ScenarioBundle b)
     {
+        var scenario = b.Scenario;
         var state = new GameState
         {
-            ScenarioId = b.Scenario.Id,
-            Clock = new Clock(b.Scenario.StartMinute),
-            Zones = b.Scenario.Zones.ToDictionary(z => z.Id),
-            Units = b.Scenario.Units.ToDictionary(u => u.Id),
+            ScenarioId = scenario.Id,
+            HqZoneId = scenario.HqZoneId,
+            Clock = new Clock(scenario.StartMinute),
+            Zones = scenario.Zones.ToDictionary(z => z.Id),
+            Units = scenario.Units.ToDictionary(u => u.Id),
             Knowledge = new PlayerKnowledge(),
             Orders = new(),
             DeliveredReports = new(),
-            EventLog = new()
+            EventLog = new(),
+            EndMinute = scenario.EndMinute,
+            Seed = scenario.Seed ?? 0,
+            RngState = scenario.Seed ?? 0
         };
-        foreach (var u in state.Units.Values)
-            if (state.Zones.TryGetValue(u.LocationZoneId, out var z) && !z.PresentUnitIds.Contains(u.Id))
-                z.PresentUnitIds.Add(u.Id);
+
+        foreach (var unit in state.Units.Values)
+        {
+            if (state.Zones.TryGetValue(unit.LocationZoneId, out var zone) && !zone.PresentUnitIds.Contains(unit.Id))
+                zone.PresentUnitIds.Add(unit.Id);
+        }
+
+        for (var i = 0; i < scenario.CourierCount; i++)
+            state.Couriers.Add(new Courier { Id = $"C{i + 1:00}", State = CourierState.Idle });
+
         return state;
     }
 }

@@ -1,6 +1,4 @@
-using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Domain;
-using Kriegsspiel.Core.Orders;
 
 namespace Kriegsspiel.Core.Arbitration;
 
@@ -9,14 +7,11 @@ public sealed record RouteStep(
     string ToZoneId,
     string EdgeId,
     EdgeType EdgeType,
-    int Minutes,
-    int ReadinessDelta,
-    int FatigueDelta);
+    int Minutes);
 
 public sealed record RoutePlan(
     string FromZoneId,
     string TargetZoneId,
-    MovementMode MovementMode,
     IReadOnlyList<RouteStep> Steps,
     int TotalMinutes)
 {
@@ -25,11 +20,8 @@ public sealed record RoutePlan(
 
 public static class PathPlanner
 {
-    private const int RoadReadinessDelta = -3;
-    private const int OffroadReadinessDelta = -6;
-    private const int CrossingReadinessDelta = -4;
-    private const int OffroadExtraFatigue = 2;
-    private const double MinimumMultiplier = 0.1;
+    public const int MinCourierLegMinutes = 5;
+    private const double OffroadWeightMultiplier = 0.8;
 
     public static string EdgeId(string firstZoneId, string secondZoneId) =>
         string.CompareOrdinal(firstZoneId, secondZoneId) <= 0
@@ -67,41 +59,53 @@ public static class PathPlanner
         GameState state,
         string fromZoneId,
         string toZoneId,
-        MovementMode movementMode,
-        FrictionTable friction,
+        int? deadline,
+        string? forbiddenZoneId,
         out RoutePlan plan,
         IReadOnlySet<string>? blockedEdges = null)
     {
-        plan = new RoutePlan(fromZoneId, toZoneId, movementMode, [], 0);
+        plan = new RoutePlan(fromZoneId, toZoneId, [], 0);
         if (!state.Zones.ContainsKey(fromZoneId) || !state.Zones.ContainsKey(toZoneId)) return false;
         if (fromZoneId == toZoneId) return true;
+        if (forbiddenZoneId == toZoneId) return false;
 
-        var mode = ModeParameters(friction, movementMode);
-        var distance = new Dictionary<string, int> { [fromZoneId] = 0 };
+        bool hasDeadline = deadline.HasValue;
+        var cost = new Dictionary<string, double> { [fromZoneId] = 0 };
         var previous = new Dictionary<string, (string FromZoneId, RouteStep Step)>();
         var settled = new HashSet<string>();
-        var frontier = new PriorityQueue<string, int>();
-        frontier.Enqueue(fromZoneId, 0);
+        var frontier = new PriorityQueue<string, (double Cost, long Sequence)>();
+        long sequence = 0;
+        frontier.Enqueue(fromZoneId, (0, sequence++));
 
-        while (frontier.TryDequeue(out var current, out var currentDistance))
+        while (frontier.TryDequeue(out var current, out var key))
         {
             if (!settled.Add(current)) continue;
+            if (key.Cost > cost.GetValueOrDefault(current, double.PositiveInfinity)) continue;
             if (current == toZoneId) break;
             if (!state.Zones.TryGetValue(current, out var zone)) continue;
 
-            foreach (var (neighbor, travel) in zone.TravelMinutes)
+            foreach (var neighbor in zone.TravelMinutes.Keys.OrderBy(id => id, StringComparer.Ordinal))
             {
-                if (travel <= 0 || !IsEdgePassable(state, current, neighbor, blockedEdges)) continue;
-                var step = CreateStep(zone, current, neighbor, travel, movementMode, mode);
-                var candidate = currentDistance + step.Minutes;
-                if (candidate >= distance.GetValueOrDefault(neighbor, int.MaxValue)) continue;
-                distance[neighbor] = candidate;
+                var travel = zone.TravelMinutes[neighbor];
+                if (travel <= 0) continue;
+                if (IsForbiddenNode(forbiddenZoneId, fromZoneId, neighbor)) continue;
+                if (!IsEdgePassable(state, current, neighbor, blockedEdges)) continue;
+
+                var edgeType = zone.EdgeTypeFor(neighbor);
+                var step = new RouteStep(current, neighbor, EdgeId(current, neighbor), edgeType, travel);
+                var weight = hasDeadline
+                    ? travel
+                    : travel * (edgeType == EdgeType.Offroad ? OffroadWeightMultiplier : 1.0);
+                var candidate = key.Cost + weight;
+                if (candidate >= cost.GetValueOrDefault(neighbor, double.PositiveInfinity)) continue;
+
+                cost[neighbor] = candidate;
                 previous[neighbor] = (current, step);
-                frontier.Enqueue(neighbor, candidate);
+                frontier.Enqueue(neighbor, (candidate, sequence++));
             }
         }
 
-        if (!distance.TryGetValue(toZoneId, out var totalMinutes)) return false;
+        if (!cost.ContainsKey(toZoneId)) return false;
 
         var reversed = new List<RouteStep>();
         var cursor = toZoneId;
@@ -112,61 +116,70 @@ public static class PathPlanner
             cursor = link.FromZoneId;
         }
         reversed.Reverse();
-        plan = new RoutePlan(fromZoneId, toZoneId, movementMode, reversed, totalMinutes);
+
+        var totalMinutes = reversed.Sum(step => step.Minutes);
+        plan = new RoutePlan(fromZoneId, toZoneId, reversed, totalMinutes);
         return true;
     }
 
-    public static int TravelMinutes(Zone zone, int baseTravel, MovementMode movementMode, FrictionTable friction)
-    {
-        var multiplier = Math.Max(MinimumMultiplier, zone.MoveMultiplier) *
-                         Math.Max(MinimumMultiplier, ModeParameters(friction, movementMode).TimeMultiplier);
-        return Math.Max(1, (int)Math.Ceiling(baseTravel * multiplier));
-    }
-
-    public static int ReadinessDelta(EdgeType edgeType, MovementMode movementMode, FrictionTable friction) =>
-        EdgeReadinessDelta(edgeType) + ModeParameters(friction, movementMode).ReadinessDelta;
-
-    public static int FatigueDelta(EdgeType edgeType, MovementMode movementMode, FrictionTable friction) =>
-        ModeParameters(friction, movementMode).FatigueDelta + (edgeType == EdgeType.Offroad ? OffroadExtraFatigue : 0);
-
-    private static RouteStep CreateStep(
-        Zone zone,
+    public static int CourierLegMinutes(
+        GameState state,
         string fromZoneId,
         string toZoneId,
-        int baseTravel,
-        MovementMode movementMode,
-        FrictionTable.MovementMode mode)
+        IReadOnlySet<string>? blockedEdges = null)
     {
-        var edgeType = zone.EdgeTypeFor(toZoneId);
-        return new RouteStep(
-            fromZoneId,
-            toZoneId,
-            EdgeId(fromZoneId, toZoneId),
-            edgeType,
-            TravelMinutes(zone, baseTravel, movementMode, mode.TimeMultiplier),
-            EdgeReadinessDelta(edgeType) + mode.ReadinessDelta,
-            mode.FatigueDelta + (edgeType == EdgeType.Offroad ? OffroadExtraFatigue : 0));
+        var shortest = ShortestCourierMinutes(state, fromZoneId, toZoneId, blockedEdges);
+        return shortest == int.MaxValue ? int.MaxValue : Math.Max(MinCourierLegMinutes, shortest);
     }
 
-    private static int TravelMinutes(Zone zone, int baseTravel, MovementMode movementMode, double modeMultiplier)
+    public static int CourierLegBackMinutes(
+        GameState state,
+        string fromZoneId,
+        string toZoneId,
+        IReadOnlySet<string>? blockedEdges = null) =>
+        CourierLegMinutes(state, fromZoneId, toZoneId, blockedEdges);
+
+    private static bool IsForbiddenNode(string? forbiddenZoneId, string startZoneId, string nodeId)
     {
-        var multiplier = Math.Max(MinimumMultiplier, zone.MoveMultiplier) * Math.Max(MinimumMultiplier, modeMultiplier);
-        return Math.Max(1, (int)Math.Ceiling(baseTravel * multiplier));
+        if (forbiddenZoneId is null) return false;
+        if (forbiddenZoneId == startZoneId) return nodeId == startZoneId;
+        return nodeId == forbiddenZoneId;
     }
 
-    private static int EdgeReadinessDelta(EdgeType edgeType) => edgeType switch
+    private static int ShortestCourierMinutes(
+        GameState state,
+        string fromZoneId,
+        string toZoneId,
+        IReadOnlySet<string>? blockedEdges)
     {
-        EdgeType.Road => RoadReadinessDelta,
-        EdgeType.Offroad => OffroadReadinessDelta,
-        EdgeType.Crossing => CrossingReadinessDelta,
-        _ => RoadReadinessDelta
-    };
+        if (fromZoneId == toZoneId) return 0;
+        if (!state.Zones.ContainsKey(fromZoneId) || !state.Zones.ContainsKey(toZoneId)) return int.MaxValue;
 
-    private static FrictionTable.MovementMode ModeParameters(FrictionTable friction, MovementMode mode) => mode switch
-    {
-        MovementMode.March => friction.Movement.March,
-        MovementMode.Covert => friction.Movement.Stealth,
-        MovementMode.Contact => friction.Movement.ContactReady,
-        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown movement mode.")
-    };
+        var distance = new Dictionary<string, int> { [fromZoneId] = 0 };
+        var settled = new HashSet<string>();
+        var frontier = new PriorityQueue<string, (int Minutes, long Sequence)>();
+        long sequence = 0;
+        frontier.Enqueue(fromZoneId, (0, sequence++));
+
+        while (frontier.TryDequeue(out var current, out var key))
+        {
+            if (!settled.Add(current)) continue;
+            if (key.Minutes > distance.GetValueOrDefault(current, int.MaxValue)) continue;
+            if (current == toZoneId) return key.Minutes;
+            if (!state.Zones.TryGetValue(current, out var zone)) continue;
+
+            foreach (var neighbor in zone.CourierMinutes.Keys.OrderBy(id => id, StringComparer.Ordinal))
+            {
+                var minutes = zone.CourierMinutes[neighbor];
+                if (minutes <= 0) continue;
+                if (blockedEdges?.Contains(EdgeId(current, neighbor)) == true) continue;
+                var candidate = key.Minutes + minutes;
+                if (candidate >= distance.GetValueOrDefault(neighbor, int.MaxValue)) continue;
+                distance[neighbor] = candidate;
+                frontier.Enqueue(neighbor, (candidate, sequence++));
+            }
+        }
+
+        return distance.GetValueOrDefault(toZoneId, int.MaxValue);
+    }
 }

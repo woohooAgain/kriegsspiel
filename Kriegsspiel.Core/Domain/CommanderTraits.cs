@@ -7,6 +7,10 @@ public sealed record CommanderTraits(
     int ReportHonesty,
     int Professionalism = 1)
 {
+    public int Init => Initiative;
+    public int Pedantry => Literalism;
+    public int Honesty => ReportHonesty;
+
     public bool InRange =>
         IsInRange(Initiative) &&
         IsInRange(Caution) &&

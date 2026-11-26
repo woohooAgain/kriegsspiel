@@ -1,14 +1,14 @@
-# TODO: переход на упрощённый канон `rules.md` v0.4 (in-place, без сохранения совместимости) — план r3
+# TODO: переход на упрощённый канон `rules.md` v0.4 (in-place, без сохранения совместимости) — план r4 (triage Wave 5)
 
 Источник требований: `docs/gameDocs/rules.md` (редакция «Ядро движка v0.4», упрощённый MVP-scope). `docs/gameDocs/rules_extended.md` — только архив/справка, **не** целевые требования.
 
 ## База плана и границы
 
-- **База плана:** `master` @ `340829f` (содержит `rules.md` v0.4, архив `rules_extended.md` и актуальный `structure.md`). Канон-предок: `docs/rules-simplified-mvp` @ `adb8ba4`.
-- **Ветка плана r3:** `docs/arch-mvp-transition-plan-r3` от `master` @ `340829f`. Работа — в отдельном linked worktree `/tmp/opencode/ks-arch-mvp-transition-r3`; коммиты только в эту ветку.
+- **База плана (r4):** `wave/5-v04-foundation` @ `85573dc` (база `master` @ `90acbe6`; содержит `rules.md` v0.4, архив `rules_extended.md` и актуальный `structure.md`). Канон-предок: `docs/rules-simplified-mvp` @ `adb8ba4`.
+- **Ветка плана r4 (triage Wave 5):** `docs/arch-wave5-fix-plan` от `wave/5-v04-foundation` @ `85573dc`. Работа — в отдельном linked worktree `/tmp/opencode/ks-arch-wave5-fix-plan`; коммиты только в эту ветку. Правка r4 добавляет `T-54a` и явные §6-проверки unit-aware strength на resolver-пути.
 - **Предыдущий план r2** (`docs/arch-mvp-refactor-plan-r2` @ `13f197a`) **заменён полностью**: он сохранял совместимость, legacy-fallback и выносил удаление extended-кода за пределы плана. Эти требования отменены. Исторические отчёты не переписываются; `T-30`–`T-47` из r2 не выполняются.
 - **FS-*:** `N/A` — это миграция действующего канона `rules.md` на упрощённый MVP, а не новая фича/механика. Трассировка — напрямую к `rules.md §1–§7`.
-- **Техдолг:** не планируется; записи по переходу не создаются, задачи плана на них не ссылаются.
+- **Техдолг:** не планируется; записи по переходу не создаются, задачи плана на них не ссылаются. §6-разрыв на resolver-пути закрывается задачами `T-54a`/`T-56`/`T-57`/`T-58`, а не `TD-*`.
 - **Окружение:** `dotnet 10.0.404`; `script` (util-linux) для TTY-прогонов Spectre; CI/gh-пайплайна нет. Отсутствие среды фиксировать доказательствами, не выдавать за успех.
 
 ## Приоритетные требования перехода
@@ -18,6 +18,18 @@
 3. **Только необходимые изменения.** Планируется ровно то, что нужно для перехода на v0.4; расширенные механики не добавляются и не «доделываются».
 4. **`docs/projectDocs/todo.md` очищен и содержит только этот план.** Старый план r2/r1 в нём не сохраняется.
 5. **Без техдолга.** Переходные задачи закрываются в рамках плана; переходные записи не создаются.
+
+## Triage Wave 5 (r1, `wave_failed`)
+
+- **Причина:** legacy `ExecutionResolver.StatusReport` вызывает `IReportFactory.Create`, который не заполняет `ReportedOwnStrength`/`ReportedEnemyStrength`; у Arrival/Impossible/Status/Contact поля остаются `null`, что нарушает `rules.md §6`. Это не входило в ownership `T-53`/`T-54` и не было явно покрыто `T-55`/`T-58`; `T-65` содержал только общий cleanup.
+- **Затронутые корни:** `ExecutionResolver` (legacy `Create`); `UnderstandingResolver` (прямой `Report.Create`); `ReconResolver`/`CombatResolver` (legacy `Create`/`new Report`).
+- **Маппинг «причина/затронутые T-* → корректирующая T-*»:**
+  - `T-53`+`T-54` (ExecutionResolver ↔ unit-aware ReportFactory) → `T-54a` (новый контрактный член `CreateWithHonesty`, перевод `StatusReport`, §6-тесты на resolver-пути).
+  - `T-56` (UnderstandingResolver) → явное требование и проверки §6-strength в самой карточке `T-56` (ownership не меняется).
+  - `T-57`/`T-58` (Combat/Recon) → явные требования unit-aware `CreateWithHonesty` и §6-проверки в карточках `T-57`/`T-58`.
+  - `T-65` — финальный backstop (legacy `Create`/прямой `Report.Create` вне `ReportFactory`), не единственное покрытие.
+- **TD:** не создаётся; переходных `TD-*` нет.
+- **Refs:** `docs/projectDocs/reports/wave-5-report.md`; `docs/projectDocs/reports/handoffs/scenario-tester-wave5-r1.md`; `docs/projectDocs/reports/handoffs/wave5-r1-evidence/t54-legacy-path-probe.log`; `Kriegsspiel.Core/Arbitration/ExecutionResolver.cs:364-381`; `Kriegsspiel.Core/Reporting/IReportNarrator.cs:82-124`; `Kriegsspiel.Core/Domain/Report.cs:78-80`.
 
 ## Сохраняющиеся жёсткие ограничения
 
@@ -33,6 +45,7 @@
 Чтобы каждая task-ветка и волна собирались до финального удаления extended-кода, в Wave 5–7 допускается **временное** сохранение старых членов/типов, которые ещё не используются v0.4-путём. Это **не** контракт совместимости и **не** dual-path:
 
 - новый код не вызывает старые методы и не читает extended-поля;
+- legacy `IReportFactory.Create` остаётся только для промежуточной сборки; после `T-54a` (`ExecutionResolver`) и `T-56`/`T-57`/`T-58` (`UnderstandingResolver`/`CombatResolver`/`ReconResolver`) production-резолверы создают донесения через unit-aware `CreateWithHonesty`, а legacy-член удаляется в `T-65`;
 - старые тесты, проверяющие удалённые механики, удаляются/переписываются в той задаче, которая меняет поведение;
 - весь временный scaffolding удаляется в `T-65` до приёмки волны 8; после `T-65` в коде не остаётся extended-полей/типов, не входящих в v0.4.
 
@@ -77,8 +90,8 @@
 
 | Волна | Задачи | Зависимости | Launch-план (группы) | Сценарий проверок волны |
 |---|---|---|---|---|
-| Wave 5 — фундамент v0.4 | `T-50`–`T-54` | нет; `T-51`–`T-53` после `T-50`; `T-54` после `T-53` | G1=`T-50`; G2=`T-51`,`T-52`,`T-53`; G3=`T-54` | См. «Wave 5 — сценарий». Build + полный test + фильтры домена/часов/PRNG/контента/движения/донесений; нет новых проектов/типов. |
-| Wave 6 — механики ядра | `T-55`–`T-60` | Wave 5; `T-60` после `T-56`/`T-59` | G1=`T-55`,`T-56`,`T-57`,`T-58`,`T-59`; G2=`T-60` | См. «Wave 6 — сценарий». Build + полный test + фильтры transmission/understanding/combat/recon/objective/doctrine; проверки формул §4–§7. |
+| Wave 5 — фундамент v0.4 | `T-50`–`T-54`, `T-54a` | нет; `T-51`–`T-53` после `T-50`; `T-54` после `T-53`; `T-54a` после `T-53`/`T-54` | G1=`T-50`; G2=`T-51`,`T-52`,`T-53`; G3=`T-54`; G4=`T-54a` | См. «Wave 5 — сценарий». Build + полный test + фильтры домена/часов/PRNG/контента/движения/донесений; unit-aware §6-strength на resolver-пути; нет новых проектов/типов. |
+| Wave 6 — механики ядра | `T-55`–`T-60` | Wave 5 (включая `T-54a`); `T-55`–`T-58` после `T-54a`; `T-60` после `T-56`/`T-59` | G1=`T-55`,`T-56`,`T-57`,`T-58`,`T-59`; G2=`T-60` | См. «Wave 6 — сценарий». Build + полный test + фильтры transmission/understanding/combat/recon/objective/doctrine; проверки формул §4–§7 и unit-aware §6-strength. |
 | Wave 7 — интеграция, консоль, persistence, удаление LLM | `T-61`–`T-64` | Wave 6; `T-63` после `T-61`; `T-62` после `T-61`/`T-63`; `T-64` после `T-62` | G1=`T-61`; G2=`T-63`; G3=`T-62`; G4=`T-64` | См. «Wave 7 — сценарий». Build + полный test + TTY `test_01`/`crossing_01` + save/load + отсутствие LLM/новых типов. |
 | Wave 8 — удаление scaffolding и документация | `T-65`, `T-66` | Wave 7; `T-66` после `T-65` | G1=`T-65`; G2=`T-66` (роль `docs-maintainer`) | См. «Wave 8 — сценарий». Build/test зелёные; extended-члены/типы удалены; docs соответствуют v0.4; `AGENTS.md`/`rules.md` не изменены. |
 
@@ -100,16 +113,17 @@
   - `T-52` (контент): `ContentLoaderTests`. Утверждения: `test_01`/`crossing_01` загружаются в v0.4-схеме; негативные кейсы (defenseBonus вне 0..2, observability вне 1..3, travelTime/courierTime <= 0, K<1, вероятности вне [0,1], дубли id, несимметричное ребро, endMinute не кратен 30, seed отсутствует, initialStrength<=0, readiness вне 0..100, ammo<0, traits вне 0..3) дают контролируемую ошибку; legacy-fallback отсутствует.
   - `T-53` (движение): `ExecutionResolverTests`. Утверждения: вес ребра и фактическое время по §5; forbidden start запрещает возврат; `T_leg`/`T_leg_back` min 5; `RemainingMinutes` уменьшается по 1/мин; немедленный переход на следующее ребро без уменьшения нового в этом тике; offroad −5 readiness; posture; move→hold; pendingOrder; нет телепорта; hold/recon не двигаются.
   - `T-54` (донесения): `ReportTests`. Утверждения: confidence по §6; `ReportedOwnStrength = null` для ReconResult; honesty 0.12; потеря `rand() < p_report_loss`; `deliveryMinute = eventMinute + T_leg_back` (min 5); версии не сливаются; T_leg_back фиксируется на событие.
-- **Критерий:** общие команды успешны, проверки `T-50`–`T-54` подтверждены, новых проектов/типов нет.
+  - `T-54a` (unit-aware §6 на resolver-пути): `ExecutionResolverTests`, `ReportTests`. Утверждения: `ExecutionResolver.StatusReport` формирует Arrival/Impossible/Status/Contact через `IReportFactory.CreateWithHonesty`; у не-Recon донесений `ReportedOwnStrength` не `null` и искажён по honesty; `ReportedEnemyStrength == 0` без обнаруженного противника и равен сумме strength enemy в наблюдаемом узле для Contact; confidence/`deliveryMinute` не изменились; в `ExecutionResolver.cs` нет производственного вызова legacy `_reports.Create`.
+- **Критерий:** общие команды успешны, проверки `T-50`–`T-54` и `T-54a` подтверждены, новых проектов/типов нет.
 
 ### Wave 6 — сценарий проверок волны
 
 - **Общие:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~TransmissionResolverTests|FullyQualifiedName~AmbiguityScorerTests|FullyQualifiedName~UnderstandingResolverTests|FullyQualifiedName~CombatResolverTests|FullyQualifiedName~FogOfWarTests|FullyQualifiedName~ObjectiveEvaluatorTests|FullyQualifiedName~EnemyDoctrineTests"`.
 - **Проверки переделанных механик (дублировать из задач):**
-  - `T-55` (курьеры/запросы/тишина): `TransmissionResolverTests`. Утверждения: приоритет Query>Order, далее FIFO; ETA от фактической отправки; `T_leg` min 5, `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; потеря на `sentMinute`; возврат `sentMinute+2*T_leg+60`; `QueryReply` в `deliverAt`; `deliveryMinute=deliverAt+T_leg_back`, `expectedReplyAt=deliverAt+T_leg_back+15`; `SilenceDetected`; потерянный курьер — `sentMinute+2*T_leg+30`.
-  - `T-56` (понимание приказа): `AmbiguityScorerTests`, `UnderstandingResolverTests`. Утверждения: A=0; +0.70 при target==null и intent!=hold; +0.15 при deadline==null и intent==move; P по §5; forbidden-конфликт по pedantry/init; искажение при A>0 и pedantry<2 (target null → случайный смежный; recon — узел через ребро от смежного; target != null → swap move/hold); pedantry>=2 → ClarificationRequest; deadline expiry; pendingOrder перезаписывается и применяется на завершении ребра.
-  - `T-57` (бой/отход): `CombatResolverTests`. Утверждения: бой на `t%30==0`; Power по §7 (posture march/attack/defense, terrain только defense, ammo 0→0.5); одновременные потери `0.25*Power_enemy/(sum)*strength`; ammo−1, readiness−10; strength 0 → удаление; отход при strength<0.30*initial в смежный узел без противника с min travelTime; иначе уничтожение; contact geometry/morale/capture не участвуют.
-  - `T-58` (разведка/контакт): recon-часть `FogOfWarTests`. Утверждения: `p_detect=clamp(0.25+0.15*observability-edgePenalty,0.10,0.95)`; edgePenalty 0.15 при входе/offroad recon, 0 при периодической проверке в узле; каденция каждый 1-мин тик с deliverAt; успех → один ReconResult confidence 3 и остановка; 30-мин окно → один ReconResult confidence 1; смена приказа сбрасывает окно; Contact confidence 2; recon из соседнего узла не участвует в бою.
+  - `T-55` (курьеры/запросы/тишина): `TransmissionResolverTests`. Утверждения: приоритет Query>Order, далее FIFO; ETA от фактической отправки; `T_leg` min 5, `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; потеря на `sentMinute`; возврат `sentMinute+2*T_leg+60`; `QueryReply` в `deliverAt`; `deliveryMinute=deliverAt+T_leg_back`, `expectedReplyAt=deliverAt+T_leg_back+15`; `SilenceDetected`; потерянный курьер — `sentMinute+2*T_leg+30`; `QueryReply` формируется через unit-aware `IReportFactory.CreateWithHonesty` с §6-полями (`ReportedOwnStrength` не `null`, `ReportedEnemyStrength` 0/сумма), прямого `Report.Create` в `TransmissionResolver`/`CourierPool` нет.
+  - `T-56` (понимание приказа): `AmbiguityScorerTests`, `UnderstandingResolverTests`. Утверждения: A=0; +0.70 при target==null и intent!=hold; +0.15 при deadline==null и intent==move; P по §5; forbidden-конфликт по pedantry/init; искажение при A>0 и pedantry<2 (target null → случайный смежный; recon — узел через ребро от смежного; target != null → swap move/hold); pedantry>=2 → ClarificationRequest; deadline expiry; pendingOrder перезаписывается и применяется на завершении ребра; Request/Status донесения формируются через unit-aware `IReportFactory.CreateWithHonesty` с `ReportedOwnStrength` по §6 и `ReportedEnemyStrength` 0/сумма, прямого `Report.Create` в `UnderstandingResolver` нет.
+  - `T-57` (бой/отход): `CombatResolverTests`. Утверждения: бой на `t%30==0`; Power по §7 (posture march/attack/defense, terrain только defense, ammo 0→0.5); одновременные потери `0.25*Power_enemy/(sum)*strength`; ammo−1, readiness−10; strength 0 → удаление; отход при strength<0.30*initial в смежный узел без противника с min travelTime; иначе уничтожение; contact geometry/morale/capture не участвуют; Contact при начале боя — через unit-aware `IReportFactory.CreateWithHonesty` с §6-strength, прямого `new Report`/legacy `Report.Create` в `CombatResolver` нет.
+  - `T-58` (разведка/контакт): recon-часть `FogOfWarTests`. Утверждения: `p_detect=clamp(0.25+0.15*observability-edgePenalty,0.10,0.95)`; edgePenalty 0.15 при входе/offroad recon, 0 при периодической проверке в узле; каденция каждый 1-мин тик с deliverAt; успех → один ReconResult confidence 3 и остановка; 30-мин окно → один ReconResult confidence 1; смена приказа сбрасывает окно; Contact confidence 2; recon из соседнего узла не участвует в бою; Contact — `ReportedOwnStrength` по §6 и `ReportedEnemyStrength` = сумма enemy в узле; ReconResult — `ReportedOwnStrength == null`, `ReportedEnemyStrength` 0/сумма; используется unit-aware `CreateWithHonesty`, legacy `_factory.Create` отсутствует.
   - `T-59` (победа/разбор): `ObjectiveEvaluatorTests`. Утверждения: Score=Σ W_v*StateScore; Achieved/Contested/Failed по §7; победа при Score>=WinThreshold; для приказа фиксируются createdMinute/sentMinute/deliverAt/original/effective/status; ровно 3 метрики §7; расширенных метрик нет.
   - `T-60` (противник): `EnemyDoctrineTests`. Утверждения: скриптовый контроллер подаёт enemy-приказы в том же `Order`-формате на CommandPhase; полный прогон до endMinute детерминирован; победа/поражение считается; нет скрытой истины в MVP-событиях.
 - **Критерий:** общие команды успешны, проверки `T-55`–`T-60` подтверждены, новых проектов/типов нет.
@@ -291,37 +305,67 @@
   - [ ] `ReportTests` зелёные.
   - [ ] Новых типов/проектов нет.
 
+### T-54a — Unit-aware §6-strength на resolver-пути донесений
+- **ID:** `T-54a`
+- **Волна:** Wave 5
+- **Покрывает:** `rules.md §6` (`ReportedOwnStrength`/`ReportedEnemyStrength` для Arrival/Impossible/Status/Contact), `§2 шаг 3` (Contact при контакте), `§4` (доставка); трассы K/N-01/N-04.
+- **Владеет файлами:**
+  - `Kriegsspiel.Core/Arbitration/ExecutionResolver.cs`
+  - `Kriegsspiel.Core/Contracts/IReportFactory.cs`
+  - `Kriegsspiel.Core/Reporting/IReportNarrator.cs`
+  - `Kriegsspiel.Core.Tests/ExecutionResolverTests.cs`
+  - `Kriegsspiel.Core.Tests/ReportTests.cs`
+  - Не трогать другие файлы; не создавать новые типы/проекты.
+- **Зависимости:** `T-53`, `T-54` (обе уже `verified`/merged; правки в их коммиты не вносить — ownership перечисленных файлов последовательно переходит к `T-54a`, параллельного выполнения с `T-53`/`T-54` нет).
+- **Что сделать:**
+  1. Добавить в `IReportFactory` unit-aware член `CreateWithHonesty(...)` (сигнатура как у `ReportFactory.CreateWithHonesty`), не создавая новых типов; `ReportFactory` реализует его; legacy `Create` оставить только как временный scaffolding для сборки, production-пути его не вызывают.
+  2. Перевести `ExecutionResolver.StatusReport` (Arrival/Impossible/Status/Contact) на `_reports.CreateWithHonesty(...)` с `unit`, `honesty = unit.Traits.ReportHonesty`; для Contact передавать enemy-юнитов наблюдаемого узла, для остальных — пустой набор; confidence/`deliveryMinute`/`T_leg_back` сохранить по §4/§6.
+  3. Заменить/удалить nested `DefaultReportFactory` в `ExecutionResolver` так, чтобы default-конструктор использовал unit-aware фабрику (существующий `ReportFactory`); не оставлять в `ExecutionResolver` вызовов `_reports.Create`/прямого `Report.Create` для production-донесений.
+  4. Дополнить `ExecutionResolverTests` проверками §6 на resolver-пути: Arrival/Impossible/Status — `ReportedOwnStrength != null` с honesty-искажением и `ReportedEnemyStrength == 0`; Contact при enemy в узле — own strength по §6 и enemy strength = сумма strength противника; `ReportedOwnStrength` не `null` у всех не-Recon донесений.
+  5. Дополнить `ReportTests` проверкой, что `IReportFactory.CreateWithHonesty` доступен через контракт и возвращает §6-поля; не менять поведение confidence/delivery.
+- **Как проверить:**
+  - `dotnet build Kriegsspiel.slnx`
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~ExecutionResolverTests|FullyQualifiedName~ReportTests"`
+  - `grep -n "_reports.Create(\|Report.Create(" Kriegsspiel.Core/Arbitration/ExecutionResolver.cs` — совпадений в production-пути нет.
+  - Утверждения: Arrival/Impossible/Status/Contact имеют `ReportedOwnStrength != null` (honesty 0..3), `ReportedEnemyStrength == 0` без enemy и сумма strength enemy для Contact; confidence/доставка соответствуют §6.
+- **Готово, если:**
+  - [ ] `ExecutionResolver` создаёт все production-донесения через unit-aware `IReportFactory.CreateWithHonesty`.
+  - [ ] `ReportedOwnStrength`/`ReportedEnemyStrength` заполнены по §6 для Arrival/Impossible/Status/Contact.
+  - [ ] Legacy `_reports.Create`/прямой `Report.Create` не используются production-путём `ExecutionResolver`.
+  - [ ] `ExecutionResolverTests`/`ReportTests` зелёные; новых типов/проектов нет.
+
 ### T-55 — Курьеры, отправка, запросы и тишина
 - **ID:** `T-55`
 - **Волна:** Wave 6
-- **Покрывает:** `rules.md §2 шаг 1, §4`; трасса D.
+- **Покрывает:** `rules.md §2 шаг 1, §4, §6` (QueryReply/strength); трасса D/K.
 - **Владеет файлами:**
   - `Kriegsspiel.Core/Arbitration/CourierPool.cs`
   - `Kriegsspiel.Core/Arbitration/TransmissionResolver.cs`
   - `Kriegsspiel.Core/Arbitration/ITransmissionResolver.cs`
   - `Kriegsspiel.Core.Tests/TransmissionResolverTests.cs`
   - Не трогать другие файлы; не создавать новые типы/проекты.
-- **Зависимости:** `T-50`, `T-51`, `T-53`, `T-54`.
+- **Зависимости:** `T-50`, `T-51`, `T-53`, `T-54`, `T-54a`.
 - **Что сделать:**
   1. Переделать пул штаба: K курьеров; состояния free/outbound/return/lost через существующий `CourierState`; очередь Order/Query; приоритет Query выше Order, далее FIFO по `createdMinute`; отправка при свободном курьере в тик `t`, `sentMinute=t`.
   2. `T_leg`/`T_leg_back` — существующий `PathPlanner` по `courierTime` от hqZone до узла юнита (на ребре — до `ToZoneId`), минимум 5; `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; ETA от фактической отправки.
   3. Потеря курьера: в `sentMinute` `rand()<p_courier_loss` → `CourierLost`, `deliverAt=null`, возврат `sentMinute+2*T_leg+60`; приказ/запрос не доставляется; AAR: `SentMinute=t`, `DeliverAt=null`, `Outcome=FailedRejected`; неотправленный до `EndMinute` — `SentMinute=null`, `DeliverAt=null`.
-  4. Query: в `deliverAt` живой юнит формирует `QueryReply`; `deliveryMinute=deliverAt+T_leg_back` (если не потеряно); `expectedReplyAt=deliverAt+T_leg_back+15`; иначе `SilenceDetected` (существующий `QuerySilence`); при потере курьера — `sentMinute+2*T_leg+30`.
-  5. Переписать `TransmissionResolverTests` под §4: FIFO/приоритет, занятые курьеры, ETA, потеря/возврат, query reply/silence, min 5.
+  4. Query: в `deliverAt` живой юнит формирует `QueryReply`; `deliveryMinute=deliverAt+T_leg_back` (если не потеряно); `expectedReplyAt=deliverAt+T_leg_back+15`; иначе `SilenceDetected` (существующий `QuerySilence`); при потере курьера — `sentMinute+2*T_leg+30`. `QueryReply` формировать через unit-aware `IReportFactory.CreateWithHonesty` с §6-полями (`ReportedOwnStrength` не `null`, `ReportedEnemyStrength` 0/сумма); прямой `Report.Create` не использовать.
+  5. Переписать `TransmissionResolverTests` под §4: FIFO/приоритет, занятые курьеры, ETA, потеря/возврат, query reply/silence, min 5; §6-strength у `QueryReply`.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~TransmissionResolverTests"`
-  - Утверждения: Query уходит раньше Order при равном времени; FIFO; `deliverAt`/`returnAt` по §4; потеря курьера не создаёт доставку; `SilenceDetected` в ожидаемом окне; T_leg >= 5.
+  - Утверждения: Query уходит раньше Order при равном времени; FIFO; `deliverAt`/`returnAt` по §4; потеря курьера не создаёт доставку; `SilenceDetected` в ожидаемом окне; T_leg >= 5; `QueryReply` имеет `ReportedOwnStrength != null` и `ReportedEnemyStrength` по §6.
 - **Готово, если:**
   - [ ] Пул и резолвер переделаны под §4 без новых типов.
   - [ ] Query/Reply/Silence и потеря курьера покрыты тестами.
   - [ ] ETA от фактической отправки; Report-доставка не занимает пул штаба.
+  - [ ] `QueryReply` создаётся через unit-aware фабрику с §6-strength; прямого `Report.Create` нет.
   - [ ] Тесты зелёные; новых типов/проектов нет.
 
 ### T-56 — Интерпретация приказа: `AmbiguityScorer`/`ConflictResolver`/`UnderstandingResolver`
 - **ID:** `T-56`
 - **Волна:** Wave 6
-- **Покрывает:** `rules.md §3` (pendingOrder), `§5`; трасса D.
+- **Покрывает:** `rules.md §3` (pendingOrder), `§5`, `§6` (Request/Status strength); трасса D/K.
 - **Владеет файлами:**
   - `Kriegsspiel.Core/Orders/AmbiguityScorer.cs`
   - `Kriegsspiel.Core/Orders/ConflictResolver.cs`
@@ -331,51 +375,53 @@
   - `Kriegsspiel.Core.Tests/AmbiguityScorerTests.cs`
   - `Kriegsspiel.Core.Tests/UnderstandingResolverTests.cs`
   - Не трогать другие файлы; не создавать новые типы/проекты.
-- **Зависимости:** `T-50`, `T-51`, `T-54`.
+- **Зависимости:** `T-50`, `T-51`, `T-54`, `T-54a`.
 - **Что сделать:**
   1. Переделать `AmbiguityScorer`: A=0; `+0.70` при target==null и intent!=hold; `+0.15` при deadline==null и intent==move; `P=clamp(0.03+A*(1+0.15*pedantry-0.10*init),0.03,0.90)`.
   2. Переделать `ConflictResolver`/`UnderstandingResolver`: Шаг 1 forbidden (target==forbidden или путь с фильтрацией не существует): `Pedantry>=Init` → `EffectiveOrder=null`, defense, ImpossibleOrder; иначе forbidden=null и Шаг 2. Шаг 2: один бросок `rand()<P`; `Pedantry>=2` → `EffectiveOrder=null`, defense, ClarificationRequest; иначе target==null → случайный смежный (recon — узел через ребро от смежного), target!=null → swap move/hold.
   3. Просрочка deadline: `t > Deadline` и цель не достигнута; `Pedantry>=2 && Init<=1` → `EffectiveOrder=null`, defense, ImpossibleOrder; иначе продолжать.
   4. `PendingOrder`: приказ на ребре не исполняется сразу, новый перезаписывает; применяется по завершении ребра; смена приказа сбрасывает recon-окно.
   5. Обновлять `Order.Outcome`: Distorted при искажении, FailedRejected при Impossible/Clarification/deadline; A сохранять в Order; использовать существующие `Misinterpretation`/`OrderMisinterpreted`, не добавлять новые event/record-типы; ветви/ограничения/режимы не использовать.
-  6. Переписать `AmbiguityScorerTests`/`UnderstandingResolverTests` под v0.4; удалить проверки extended-ветвей/ограничений/режимов.
+  6. Все донесения, которые формирует `UnderstandingResolver` (ClarificationRequest/Request, Status), создавать через unit-aware `IReportFactory.CreateWithHonesty` с `honesty = unit.Traits.ReportHonesty`; `ReportedOwnStrength` — strength юнита с искажением, `ReportedEnemyStrength` — 0/сумма в наблюдаемом узле; не использовать `Report.Create` напрямую.
+  7. Переписать `AmbiguityScorerTests`/`UnderstandingResolverTests` под v0.4; удалить проверки extended-ветвей/ограничений/режимов; добавить §6-проверки для Request/Status.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~AmbiguityScorerTests|FullyQualifiedName~UnderstandingResolverTests"`
-  - Утверждения: A/P совпадают с §5; forbidden start; pedantry>=init; pedantry>=2 → Clarification; target null → смежный; target != null → swap; deadline-исход; pendingOrder применяется на ребре; ровно один roll.
+  - Утверждения: A/P совпадают с §5; forbidden start; pedantry>=init; pedantry>=2 → Clarification; target null → смежный; target != null → swap; deadline-исход; pendingOrder применяется на ребре; ровно один roll; Request/Status имеют `ReportedOwnStrength != null` и `ReportedEnemyStrength` по §6; прямого `Report.Create` нет.
 - **Готово, если:**
   - [ ] A/P и Шаги 1–2 соответствуют §5; ровно один roll.
   - [ ] `EffectiveOrder` формируется/искажается отдельно от исходного `Order`; `Outcome` обновляется.
   - [ ] pendingOrder и deadline обработаны; recon-окно сбрасывается.
+  - [ ] Request/Status донесения используют unit-aware фабрику и §6-strength; прямого `Report.Create` нет.
   - [ ] Нет новых типов событий/приказов; extended-поля не используются MVP-путём.
   - [ ] Тесты зелёные.
 
 ### T-57 — Бой и отступление
 - **ID:** `T-57`
 - **Волна:** Wave 6
-- **Покрывает:** `rules.md §2 шаг 4, §7` (бой/потери/отход); трасса B.
+- **Покрывает:** `rules.md §2 шаг 4, §6, §7` (бой/потери/отход, Contact-strength); трасса B/K.
 - **Владеет файлами:**
   - `Kriegsspiel.Core/Arbitration/CombatResolver.cs`
   - `Kriegsspiel.Core/Arbitration/ICombatResolver.cs`
   - `Kriegsspiel.Core.Tests/CombatResolverTests.cs`
   - Не трогать другие файлы; не создавать новые типы/проекты.
-- **Зависимости:** `T-50`, `T-51`, `T-54`.
+- **Зависимости:** `T-50`, `T-51`, `T-54`, `T-54a`.
 - **Что сделать:**
   1. Бой только на `t%30==0`, в каждом узле с юнитами обеих сторон `Strength>0`; recon из соседнего узла не участвует; юниты на рёбрах не участвуют.
   2. `Power = Strength * Readiness/100 * PostureMult * TerrainMult * AmmoMult`; Posture March 0.5/Attack 1.0/Defense 1.3; Terrain `1+0.1*DefenseBonus` только при Defense; Ammo 1.0 при >0, 0.5 при 0.
   3. Если `PowerPlayer+PowerEnemy>0`: одновременные потери для каждого юнита `0.25 * PowerEnemy/(sum) * Strength`; `Ammo=max(0,Ammo-1)`, `Readiness=max(0,Readiness-10)`; `Strength==0` → удалить; обновлять `LastFoughtMinute`.
   4. Отступление: выживший с `Strength < 0.30*InitialStrength` → смежный узел без противника с минимальным `travelTime`, `EffectiveOrder=null`; если свободных нет — уничтожить; удалить из `Zone.PresentUnitIds`/`GameState.Units`.
-  5. Contact при начале боя (confidence 2) — через существующий `IReportFactory`/`Report`; не использовать contact geometry/morale/pending casualties/capture.
-  6. Переписать `CombatResolverTests` под v0.4; удалить проверки extended-механик.
+  5. Contact при начале боя (confidence 2) — через unit-aware `IReportFactory.CreateWithHonesty` с `ReportedOwnStrength` по §6 и `ReportedEnemyStrength` = сумма enemy в узле; не использовать прямой `new Report`/legacy `Report.Create`; не использовать contact geometry/morale/pending casualties/capture.
+  6. Переписать `CombatResolverTests` под v0.4; удалить проверки extended-механик; добавить §6-strength для Contact.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~CombatResolverTests"`
-  - Утверждения: Power/потери по §7; terrain только defense; ammo 0→0.5; strength 0 удалён; отход/уничтожение; recon вне боя.
+  - Утверждения: Power/потери по §7; terrain только defense; ammo 0→0.5; strength 0 удалён; отход/уничтожение; recon вне боя; Contact имеет `ReportedOwnStrength != null` и enemy strength по §6; прямого `new Report`/legacy `Report.Create` нет.
 - **Готово, если:**
   - [ ] Бой реализован без morale/contact geometry/pending casualties/capture.
   - [ ] Потери/ammo/readiness/удаление по §7.
   - [ ] Отступление/уничтожение по §7.
-  - [ ] Contact идёт через существующий контракт; новых типов нет.
+  - [ ] Contact идёт через unit-aware фабрику с §6-strength; новых типов нет.
   - [ ] Тесты зелёные.
 
 ### T-58 — Разведка и контакт
@@ -386,21 +432,21 @@
   - `Kriegsspiel.Core/Arbitration/ReconResolver.cs`
   - `Kriegsspiel.Core.Tests/FogOfWarTests.cs` (recon-часть; knowledge-часть уже переделана в `T-50`)
   - Не трогать другие файлы; не создавать новые типы/проекты.
-- **Зависимости:** `T-50`, `T-54`.
+- **Зависимости:** `T-50`, `T-54`, `T-54a`.
 - **Что сделать:**
   1. `p_detect = clamp(0.25 + 0.15*Observability - edgePenalty, 0.10, 0.95)`; edgePenalty 0.15 при входе наблюдателя в v или recon через offroad; 0 при периодической проверке в узле.
   2. Recon-каденция: если `EffectiveOrder.Intent==Recon`, проверять каждый 1-мин тик с `DeliverAt`, пока юнит стоит в узле, из которого `TargetZone` достижим по одному ребру; в наблюдаемый узел не входит; `TargetZone==null` → проверок нет до смены приказа.
   3. Первый успех → один `ReconResult` confidence 3 и остановка; иначе по истечении 30-мин окна от `DeliverAt` → один `ReconResult` confidence 1; смена приказа/pendingOrder сбрасывает окно.
-  4. Contact: при входе/прибытии в узел с enemy и при начале боя — Contact confidence 2; recon из соседнего узла в бою не участвует.
-  5. Использовать существующий `ReportFactory`/`ReportDeliveryResolver`; не сливать донесения; новых типов нет.
-  6. Переписать recon-часть `FogOfWarTests` под §6; knowledge-часть не откатывать.
+  4. Contact: при входе/прибытии в узел с enemy и при начале боя — Contact confidence 2; recon из соседнего узла в бою не участвует; Contact — `ReportedOwnStrength` по §6 и `ReportedEnemyStrength` = сумма enemy в узле.
+  5. Использовать unit-aware `IReportFactory.CreateWithHonesty`/`ReportDeliveryResolver`; ReconResult — `ReportedOwnStrength == null`, `ReportedEnemyStrength` 0/сумма; не использовать legacy `_factory.Create`/прямой `Report.Create`; не сливать донесения; новых типов нет.
+  6. Переписать recon-часть `FogOfWarTests` под §6; knowledge-часть не откатывать; добавить проверки strength-полей Contact/ReconResult.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
   - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FullyQualifiedName~FogOfWarTests"`
-  - Утверждения: p_detect по формуле; edgePenalty; успех→conf 3/стоп; провал→conf 1 через 30 мин; смена приказа сбрасывает; Contact conf 2; recon не в бою.
+  - Утверждения: p_detect по формуле; edgePenalty; успех→conf 3/стоп; провал→conf 1 через 30 мин; смена приказа сбрасывает; Contact conf 2 и §6-strength; ReconResult own strength null/enemy 0/сумма; recon не в бою; legacy `_factory.Create` нет.
 - **Готово, если:**
   - [ ] p_detect/каденция/окно соответствуют §6.
-  - [ ] Confidence и Contact корректны.
+  - [ ] Confidence и Contact/ReconResult strength корректны по §6.
   - [ ] Смена приказа сбрасывает наблюдение.
   - [ ] Нет fact-key слияния/скрытой истины; новых типов нет.
   - [ ] Тесты зелёные.
@@ -629,16 +675,18 @@
   2. Упростить `Unit`/`Order`/`EffectiveOrder`/`Report`/`GameState`/`Zone`/`CommanderTraits` до v0.4-полей; удалить неиспользуемые extended-поля и event-типы; обновить оставшиеся ссылки.
   3. Удалить `ContactGeometryResolver` и другие extended-only файлы; обновить DI/резолверы/рендеры.
   4. Удалить устаревшие тесты удалённых механик; оставить только v0.4-проверки в существующих тестовых классах.
-  5. Проверить, что в коде не осталось dual-path/legacy-fallback/`Engine`-ветки; `DeterministicRandomSource` остаётся.
+  5. Проверить, что в коде не осталось dual-path/legacy-fallback/`Engine`-ветки; все production-пути создания `Report` (`ExecutionResolver`, `UnderstandingResolver`, `ReconResolver`, `CombatResolver`, `CourierPool`/`TransmissionResolver`) используют unit-aware `IReportFactory.CreateWithHonesty`; legacy `IReportFactory.Create`/прямой `Report.Create` вне `ReportFactory` удалить; `DeterministicRandomSource` остаётся.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
   - `dotnet test Kriegsspiel.slnx`
   - `grep -R "ContactGeometry\|OrderBranch\|MovementMode\|OrderConstraint\|PendingCasualt\|Cargo\|CivilianGroup\|Morale\|Fatigue\|PoorControl\|Captured" -n --include='*.cs' Kriegsspiel.Core Kriegsspiel.Console Kriegsspiel.Core.Tests` не находит живых ссылок.
-  - Утверждения: extended-поля/типы удалены; сборка/тесты зелёные; новых типов нет.
+  - `grep -R "Report.Create(\|_reports.Create(\|_factory.Create(" -n --include='*.cs' Kriegsspiel.Core/Arbitration` не находит вызовов (production-резолверы используют `CreateWithHonesty`).
+  - Утверждения: extended-поля/типы удалены; legacy-создание `Report` вне `ReportFactory` отсутствует; сборка/тесты зелёные; новых типов нет.
 - **Готово, если:**
   - [ ] В коде не осталось extended-механик вне v0.4.
   - [ ] Устаревшие тесты/сценарии удалены; v0.4-проверки зелёные.
   - [ ] Нет dual-path/legacy-fallback/`Engine`-ветки.
+  - [ ] Production-резолверы используют только unit-aware `CreateWithHonesty`; legacy `IReportFactory.Create`/прямой `Report.Create` не осталось.
   - [ ] Новых типов/проектов нет.
 
 ### T-66 — Документация и структура v0.4
@@ -670,9 +718,10 @@
 ## Launch-план (машиночитаемая часть для orchestrator)
 
 ```yaml
-base: master@340829f
-plan_branch: docs/arch-mvp-transition-plan-r3
-plan_worktree: /tmp/opencode/ks-arch-mvp-transition-r3
+base: wave/5-v04-foundation@85573dc
+plan_revision: r4
+plan_branch: docs/arch-wave5-fix-plan
+plan_worktree: /tmp/opencode/ks-arch-wave5-fix-plan
 wave_branch_pattern: "wave/<N>-<slug>"
 task_branch_pattern: "task/T-XX-<kebab-slug>"
 merge_policy: per-task-after-verified (no batch)
@@ -690,7 +739,8 @@ waves:
       - [T-50]
       - [T-51, T-52, T-53]
       - [T-54]
-    merge: "T-50 first; then T-51/T-52/T-53 in any order; T-54 after T-53"
+      - [T-54a]
+    merge: "T-50 first; then T-51/T-52/T-53 in any order; T-54 after T-53; T-54a after T-53/T-54 (unit-aware §6 integration; no parallel with T-53/T-54)"
     gate_ref: "docs/projectDocs/todo.md#wave-5--сценарий-проверок-волны"
   - id: 6
     slug: v04-core-mechanics
@@ -698,7 +748,7 @@ waves:
     groups:
       - [T-55, T-56, T-57, T-58, T-59]
       - [T-60]
-    merge: "G1 any order after all verified; T-60 after T-56/T-59; no new types"
+    merge: "G1 any order after all verified (including T-54a); T-60 after T-56/T-59; no new types"
     gate_ref: "docs/projectDocs/todo.md#wave-6--сценарий-проверок-волны"
   - id: 7
     slug: v04-integration-console-persistence

@@ -3,22 +3,20 @@ using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Contracts;
 using Kriegsspiel.Core.Domain;
 using Kriegsspiel.Core.Orders;
+using Kriegsspiel.Core.Reporting;
 
 namespace Kriegsspiel.Core.Arbitration;
 
 public sealed class ExecutionResolver : IExecutionResolver
 {
-    private const int MinReactionDelayMinutes = 30;
-    private const int MaxReactionDelayMinutes = 60;
-    private const int AttentionShiftReadinessDelta = -2;
     private const int MaxConditionValue = 100;
-    private const string HeadquartersId = "HQ";
+    private const int CombatTurnMinutes = 30;
 
     private readonly IGameRules _rules;
     private readonly IReportFactory _reports;
     private readonly ConditionalWeakTable<GameState, ExecutionState> _states = new();
 
-    public ExecutionResolver() : this(new DefaultGameRules(), new DefaultReportFactory())
+    public ExecutionResolver() : this(new DefaultGameRules(), new ReportFactory(new FrictionTable()))
     {
     }
 
@@ -34,120 +32,101 @@ public sealed class ExecutionResolver : IExecutionResolver
         if (order is null) yield break;
         if (!s.Units.TryGetValue(order.ToUnitId, out var unit)) yield break;
 
+        if (unit.IsOnEdge)
+        {
+            unit.PendingOrder = order;
+            yield break;
+        }
+
         var effective = s.EffectiveOrders.TryGetValue(e.OrderId, out var existing)
             ? existing
             : EffectiveOrder.From(order);
         s.EffectiveOrders[e.OrderId] = effective;
-        unit.EffectiveOrder = effective;
-        unit.CurrentOrderId = e.OrderId;
-        unit.Posture = PostureFor(effective);
 
-        var target = effective.TargetZoneId ?? order.TargetZoneId;
-        if (effective.ReportBy is int reportAt)
-            ScheduleReportDue(s, reportAt, unit.Id, e.Minute);
-
-        if (!RequiresMovement(effective.Intent))
-        {
-            StateFor(s).Routes.Remove(unit.Id);
-            yield return StatusReport(s, f, rng, unit, e.Minute, $"{unit.Name}: {unit.LocationZoneId}, задача {effective.Intent}.");
-            yield break;
-        }
-
-        if (string.IsNullOrWhiteSpace(target) || !s.Zones.ContainsKey(target))
-        {
-            foreach (var report in Impossible(s, f, rng, unit, effective, e.Minute, "нет доступной цели", null))
-                yield return report;
-            yield break;
-        }
-
-        if (target == unit.LocationZoneId)
-        {
-            StateFor(s).Routes.Remove(unit.Id);
-            unit.CurrentOrderId = null;
-            yield return StatusReport(s, f, rng, unit, e.Minute, $"{unit.Name}: уже в {target}.", ReportKind.Arrival);
-            yield break;
-        }
-
-        if (!PathPlanner.TryPlan(s, unit.LocationZoneId, target, effective.MovementMode, f, out var plan))
-        {
-            foreach (var report in Impossible(s, f, rng, unit, effective, e.Minute, $"нет маршрута в {target}", null))
-                yield return report;
-            yield break;
-        }
-
-        if (effective.NotLaterThan is int deadline && e.Minute + plan.TotalMinutes > deadline)
-        {
-            foreach (var report in Impossible(s, f, rng, unit, effective, e.Minute, "срок прибытия истёк", null))
-                yield return report;
-            yield break;
-        }
-
-        var state = StateFor(s);
-        state.Routes[unit.Id] = new RouteState(effective, plan, 0, e.Minute);
-        ScheduleStep(s, unit.Id, plan.Steps[0].ToZoneId, e.Minute);
-        yield return StatusReport(s, f, rng, unit, e.Minute, $"{unit.Name}: выступает в {target} через {plan.Steps.Count} переход(ов).");
+        foreach (var report in BeginOrder(s, f, rng, unit, effective, e.Minute))
+            yield return report;
     }
 
     public IEnumerable<Report> OnMove(UnitMoved e, GameState s, FrictionTable f, Random rng)
     {
         if (!s.Units.TryGetValue(e.UnitId, out var unit)) yield break;
         var state = StateFor(s);
-        if (!state.Routes.TryGetValue(unit.Id, out var route))
-        {
-            var fallback = unit.EffectiveOrder ?? EffectiveOrder.From(new Order
-            {
-                ToUnitId = unit.Id,
-                Intent = OrderIntent.Move,
-                TargetZoneId = e.ToZoneId
-            });
-            if (!PathPlanner.TryPlan(s, unit.LocationZoneId, e.ToZoneId, fallback.MovementMode, f, out var direct))
-                yield break;
-            route = new RouteState(fallback, direct, 0, e.Minute);
-            state.Routes[unit.Id] = route;
-        }
-
-        if (route.Index >= route.Plan.Steps.Count) yield break;
-        var step = route.Plan.Steps[route.Index];
-        if (step.ToZoneId != e.ToZoneId || unit.LocationZoneId != step.FromZoneId) yield break;
-
-        if (!PathPlanner.IsEdgePassable(s, step.FromZoneId, step.ToZoneId, route.BlockedEdges))
-        {
-            foreach (var report in Impossible(s, f, rng, unit, route.Order, e.Minute, $"ребро {step.EdgeId} непроходимо", route))
-                yield return report;
-            yield break;
-        }
-
-        ApplyStep(s, unit, step);
-        route.Index++;
-        int minute = EffectiveMinute(s, e.Minute);
-        bool atTarget = route.Index >= route.Plan.Steps.Count;
-        bool contact = HasEnemyContact(s, unit, step.ToZoneId);
-        if (atTarget || contact)
-            s.Clock.Schedule(new UnitArrived(minute, unit.Id, step.ToZoneId), minute, EventPhase.Movement);
-
-        if (contact)
+        if (!state.Routes.TryGetValue(unit.Id, out var route)) yield break;
+        if (!unit.IsOnEdge) yield break;
+        if (route.Index >= route.Plan.Steps.Count)
         {
             state.Routes.Remove(unit.Id);
-            s.Clock.Schedule(new CombatTick(minute, step.ToZoneId), minute, EventPhase.Combat);
-            yield return StatusReport(
-                s, f, rng, unit, minute,
-                $"{unit.Name}: контакт в {step.ToZoneId}, до цели не дошёл.",
-                ReportKind.Contact,
-                $"contact:{step.ToZoneId}");
             yield break;
         }
 
-        if (route.Index >= route.Plan.Steps.Count) yield break;
-
-        var next = route.Plan.Steps[route.Index];
-        int arrival = minute + next.Minutes + route.RemainingMinutesAfter(route.Index + 1);
-        if (route.Order.NotLaterThan is int deadline && arrival > deadline)
+        var step = route.Plan.Steps[route.Index];
+        if (unit.EdgeFromZoneId != step.FromZoneId || unit.EdgeToZoneId != step.ToZoneId)
         {
-            foreach (var report in Impossible(s, f, rng, unit, route.Order, minute, "опоздание к сроку", route))
+            state.Routes.Remove(unit.Id);
+            yield break;
+        }
+
+        int minute = e.Minute;
+        unit.LastMovedMinute = minute;
+        if (unit.RemainingMinutes > 0)
+            unit.RemainingMinutes--;
+
+        if (unit.RemainingMinutes > 0)
+        {
+            ScheduleTick(s, unit, minute + 1);
+            yield break;
+        }
+
+        CompleteEdge(s, unit, step);
+        route.Index++;
+
+        if (unit.PendingOrder is { } pending)
+        {
+            unit.PendingOrder = null;
+            state.Routes.Remove(unit.Id);
+            var effective = s.EffectiveOrders.TryGetValue(pending.Id, out var prepared)
+                ? prepared
+                : EffectiveOrder.From(pending);
+            s.EffectiveOrders[pending.Id] = effective;
+            foreach (var report in BeginOrder(s, f, rng, unit, effective, minute))
                 yield return report;
             yield break;
         }
-        ScheduleStep(s, unit.Id, next.ToZoneId, minute + next.Minutes);
+
+        if (HasEnemyContact(s, unit, unit.LocationZoneId))
+        {
+            state.Routes.Remove(unit.Id);
+            unit.Posture = Posture.Attack;
+            ScheduleCombat(s, unit.LocationZoneId, minute);
+            yield return StatusReport(
+                s, f, rng, unit, minute,
+                $"{unit.Name}: контакт в {unit.LocationZoneId}, движение остановлено.",
+                ReportKind.Contact,
+                $"contact:{unit.LocationZoneId}");
+            yield break;
+        }
+
+        bool atTarget = route.Index >= route.Plan.Steps.Count;
+        if (!atTarget && AbortsOnDeadline(unit, route.Order, minute))
+        {
+            state.Routes.Remove(unit.Id);
+            foreach (var report in FailOrder(s, f, rng, unit, route.Order, minute, "срок прибытия истёк"))
+                yield return report;
+            yield break;
+        }
+
+        if (atTarget)
+        {
+            state.Routes.Remove(unit.Id);
+            unit.Posture = Posture.Defend;
+            if (route.Order.Intent != OrderIntent.Hold)
+                route.Order.Intent = OrderIntent.Hold;
+            unit.CurrentOrderId = null;
+            ScheduleArrival(s, unit.Id, unit.LocationZoneId, minute);
+            yield break;
+        }
+
+        EnterEdge(s, unit, route.Plan.Steps[route.Index], minute);
     }
 
     public IEnumerable<Report> OnArrive(UnitArrived e, GameState s, FrictionTable f, Random rng)
@@ -166,10 +145,203 @@ public sealed class ExecutionResolver : IExecutionResolver
         yield return StatusReport(s, f, rng, unit, e.Minute, $"{unit.Name}: в {unit.LocationZoneId}, силы ~{unit.Strength}%.", e.Kind);
     }
 
-    private static void ScheduleStep(GameState s, string unitId, string toZoneId, int minute)
+    private List<Report> BeginOrder(
+        GameState s,
+        FrictionTable f,
+        Random rng,
+        Unit unit,
+        EffectiveOrder order,
+        int minute)
+    {
+        var reports = new List<Report>();
+        var state = StateFor(s);
+        state.Routes.Remove(unit.Id);
+
+        s.EffectiveOrders[order.SourceOrderId] = order;
+        unit.EffectiveOrder = order;
+        unit.CurrentOrderId = order.SourceOrderId;
+
+        if (order.ReportBy is int reportAt)
+            ScheduleReportDue(s, reportAt, unit.Id, minute);
+
+        if (order.Intent == OrderIntent.Recon)
+        {
+            unit.Posture = Posture.Defend;
+            unit.CurrentOrderId = null;
+            reports.Add(StatusReport(s, f, rng, unit, minute, $"{unit.Name}: ведёт наблюдение.", ReportKind.Status));
+            return reports;
+        }
+
+        var target = order.TargetZoneId;
+        bool holdIntent = order.Intent == OrderIntent.Hold;
+
+        if (holdIntent && string.IsNullOrWhiteSpace(target))
+        {
+            unit.Posture = Posture.Defend;
+            unit.CurrentOrderId = null;
+            reports.Add(StatusReport(s, f, rng, unit, minute, $"{unit.Name}: удерживает {unit.LocationZoneId}."));
+            return reports;
+        }
+
+        if (string.IsNullOrWhiteSpace(target) || !s.Zones.ContainsKey(target))
+        {
+            reports.AddRange(FailOrder(s, f, rng, unit, order, minute, "нет доступной цели"));
+            return reports;
+        }
+
+        if (!unit.IsOnEdge && target == unit.LocationZoneId)
+        {
+            if (HasEnemyContact(s, unit, target))
+            {
+                unit.Posture = Posture.Attack;
+                ScheduleCombat(s, target, minute);
+                reports.Add(StatusReport(
+                    s, f, rng, unit, minute,
+                    $"{unit.Name}: цель {target} занята противником.",
+                    ReportKind.Contact,
+                    $"contact:{target}"));
+            }
+            else
+            {
+                unit.Posture = Posture.Defend;
+                order.Intent = OrderIntent.Hold;
+                reports.Add(StatusReport(
+                    s, f, rng, unit, minute,
+                    $"{unit.Name}: уже в {target}, удерживает.",
+                    ReportKind.Arrival));
+            }
+            unit.CurrentOrderId = null;
+            return reports;
+        }
+
+        if (AbortsOnDeadline(unit, order, minute))
+        {
+            reports.AddRange(FailOrder(s, f, rng, unit, order, minute, "срок прибытия истёк"));
+            return reports;
+        }
+
+        var forbidden = order.ForbiddenZoneId;
+        if (forbidden is not null && forbidden == target)
+        {
+            if (unit.Traits.Pedantry >= unit.Traits.Init)
+            {
+                reports.AddRange(FailOrder(s, f, rng, unit, order, minute, $"цель {target} запрещена"));
+                return reports;
+            }
+            forbidden = null;
+            order.ForbiddenZoneId = null;
+        }
+
+        if (!PathPlanner.TryPlan(s, unit.LocationZoneId, target, order.Deadline, forbidden, out var plan) || plan.IsEmpty)
+        {
+            if (forbidden is not null && unit.Traits.Init > unit.Traits.Pedantry)
+            {
+                order.ForbiddenZoneId = null;
+                if (!PathPlanner.TryPlan(s, unit.LocationZoneId, target, order.Deadline, null, out plan) || plan.IsEmpty)
+                {
+                    reports.AddRange(FailOrder(s, f, rng, unit, order, minute, $"нет маршрута в {target}"));
+                    return reports;
+                }
+            }
+            else
+            {
+                reports.AddRange(FailOrder(s, f, rng, unit, order, minute, $"нет маршрута в {target}"));
+                return reports;
+            }
+        }
+
+        state.Routes[unit.Id] = new RouteState(order, plan, 0);
+        EnterEdge(s, unit, plan.Steps[0], minute);
+        reports.Add(StatusReport(
+            s, f, rng, unit, minute,
+            $"{unit.Name}: выступает в {target} через {plan.Steps.Count} переход(ов)."));
+        return reports;
+    }
+
+    private void EnterEdge(GameState s, Unit unit, RouteStep step, int minute)
+    {
+        if (s.Zones.TryGetValue(step.FromZoneId, out var from))
+            from.PresentUnitIds.Remove(unit.Id);
+
+        unit.LocationZoneId = step.FromZoneId;
+        unit.IsOnEdge = true;
+        unit.EdgeFromZoneId = step.FromZoneId;
+        unit.EdgeToZoneId = step.ToZoneId;
+        unit.EntryEdgeType = step.EdgeType;
+        unit.RemainingMinutes = step.Minutes;
+        unit.Posture = Posture.March;
+        unit.CurrentOrderId = unit.EffectiveOrder?.SourceOrderId;
+        ScheduleTick(s, unit, minute + 1);
+    }
+
+    private void CompleteEdge(GameState s, Unit unit, RouteStep step)
+    {
+        if (s.Zones.TryGetValue(step.FromZoneId, out var from))
+            from.PresentUnitIds.Remove(unit.Id);
+        if (s.Zones.TryGetValue(step.ToZoneId, out var to) && !to.PresentUnitIds.Contains(unit.Id))
+            to.PresentUnitIds.Add(unit.Id);
+
+        unit.LocationZoneId = step.ToZoneId;
+        unit.IsOnEdge = false;
+        unit.EdgeFromZoneId = null;
+        unit.EdgeToZoneId = null;
+        unit.RemainingMinutes = 0;
+
+        if (step.EdgeType == EdgeType.Offroad)
+            unit.Readiness = ClampCondition(unit.Readiness - (int)_rules.OffroadReadinessPenalty);
+    }
+
+    private List<Report> FailOrder(
+        GameState s,
+        FrictionTable f,
+        Random rng,
+        Unit unit,
+        EffectiveOrder order,
+        int minute,
+        string reason)
+    {
+        StateFor(s).Routes.Remove(unit.Id);
+        order.Outcome = "Failed/Rejected";
+        unit.EffectiveOrder = null;
+        unit.EffectiveOrderId = null;
+        unit.CurrentOrderId = null;
+        unit.PendingOrder = null;
+        unit.Posture = Posture.Defend;
+        return
+        [
+            StatusReport(
+                s, f, rng, unit, minute,
+                $"{unit.Name}: не может выполнить приказ ({reason}).",
+                ReportKind.Impossible,
+                $"impossible:{unit.Id}")
+        ];
+    }
+
+    private static bool AbortsOnDeadline(Unit unit, EffectiveOrder order, int minute) =>
+        order.Deadline is int deadline &&
+        minute > deadline &&
+        unit.Traits.Pedantry >= 2 &&
+        unit.Traits.Init <= 1;
+
+    private static void ScheduleTick(GameState s, Unit unit, int minute)
     {
         int at = EffectiveMinute(s, minute);
-        s.Clock.Schedule(new UnitMoved(at, unitId, toZoneId), at, EventPhase.Movement);
+        s.Clock.Schedule(new UnitMoved(at, unit.Id, unit.EdgeToZoneId ?? string.Empty), at, EventPhase.Movement);
+    }
+
+    private static void ScheduleArrival(GameState s, string unitId, string zoneId, int minute)
+    {
+        int at = EffectiveMinute(s, minute);
+        s.Clock.Schedule(new UnitArrived(at, unitId, zoneId), at, EventPhase.Movement);
+    }
+
+    private static void ScheduleCombat(GameState s, string zoneId, int minute)
+    {
+        int tick = minute % CombatTurnMinutes == 0
+            ? minute
+            : ((minute / CombatTurnMinutes) + 1) * CombatTurnMinutes;
+        if (s.Clock.PendingKeys.Any(key => key.Minute == tick && key.Phase == EventPhase.Combat)) return;
+        s.Clock.Schedule(new CombatTick(tick, zoneId), tick, EventPhase.Combat);
     }
 
     private static void ScheduleReportDue(GameState s, int minute, string unitId, int earliestMinute)
@@ -180,146 +352,31 @@ public sealed class ExecutionResolver : IExecutionResolver
 
     private static int EffectiveMinute(GameState s, int minute) => Math.Max(minute, s.Clock.Now);
 
-    private static Posture PostureFor(EffectiveOrder order) => order.MovementMode switch
-    {
-        MovementMode.Contact => Posture.Attack,
-        _ => order.Intent switch
-        {
-            OrderIntent.Hold or OrderIntent.Reserve or OrderIntent.Guard => Posture.Defend,
-            OrderIntent.Withdraw => Posture.Withdraw,
-            _ => Posture.March
-        }
-    };
-
-    private static bool RequiresMovement(OrderIntent intent) =>
-        intent is not (OrderIntent.Hold or OrderIntent.Reserve or OrderIntent.Guard);
-
     private static bool HasEnemyContact(GameState s, Unit unit, string zoneId) =>
         s.Zones.TryGetValue(zoneId, out var zone) &&
         zone.PresentUnitIds.Any(id => id != unit.Id &&
                                      s.Units.TryGetValue(id, out var other) &&
                                      !other.Captured &&
+                                     other.Strength > 0 &&
                                      unit.IsEnemyOf(other.Faction));
 
-    private static void ApplyStep(GameState s, Unit unit, RouteStep step)
+    private static IReadOnlyCollection<Unit> EnemiesInZone(GameState s, Unit unit)
     {
-        if (s.Zones.TryGetValue(unit.LocationZoneId, out var from))
-            from.PresentUnitIds.Remove(unit.Id);
-        if (s.Zones.TryGetValue(step.ToZoneId, out var to) && !to.PresentUnitIds.Contains(unit.Id))
-            to.PresentUnitIds.Add(unit.Id);
+        if (!s.Zones.TryGetValue(unit.LocationZoneId, out var zone))
+            return Array.Empty<Unit>();
 
-        if (unit.AttentionEdgeId is not null && unit.AttentionEdgeId != step.EdgeId)
-            unit.Readiness = ClampCondition(unit.Readiness + AttentionShiftReadinessDelta);
-        unit.AttentionEdgeId = step.EdgeId;
-        unit.MoveEdgeId = step.EdgeId;
-        unit.Readiness = ClampCondition(unit.Readiness + step.ReadinessDelta);
-        unit.Fatigue = ClampCondition(unit.Fatigue + step.FatigueDelta);
-        unit.LocationZoneId = step.ToZoneId;
+        var enemies = new List<Unit>();
+        foreach (var id in zone.PresentUnitIds)
+        {
+            if (id == unit.Id) continue;
+            if (s.Units.TryGetValue(id, out var other))
+                enemies.Add(other);
+        }
+
+        return enemies;
     }
 
     private static int ClampCondition(int value) => Math.Clamp(value, 0, MaxConditionValue);
-
-    private IEnumerable<Report> Impossible(
-        GameState s,
-        FrictionTable f,
-        Random rng,
-        Unit unit,
-        EffectiveOrder order,
-        int minute,
-        string reason,
-        RouteState? route)
-    {
-        var state = StateFor(s);
-        state.Routes.Remove(unit.Id);
-        unit.Posture = order.MovementMode == MovementMode.Contact ? Posture.Attack : Posture.Defend;
-        var reaction = ReactionFor(unit.Traits);
-
-        if (reaction == ImpossibleReaction.Improvise &&
-            TryImprovise(s, f, unit, order, minute, route, out var detour, out var note))
-        {
-            state.Routes[unit.Id] = detour;
-            ScheduleStep(s, unit.Id, detour.Plan.Steps[0].ToZoneId, minute);
-            yield return StatusReport(s, f, rng, unit, minute, note, factKey: $"route:{unit.Id}");
-            yield break;
-        }
-
-        int delay = MinReactionDelayMinutes + rng.Next(0, MaxReactionDelayMinutes - MinReactionDelayMinutes + 1);
-        if (reaction == ImpossibleReaction.Query)
-        {
-            s.Clock.Schedule(new QuerySent(minute, unit.Id, HeadquartersId), EffectiveMinute(s, minute), EventPhase.Scheduled);
-            s.Clock.Schedule(new ReportDue(minute + delay, unit.Id, ReportKind.Impossible),
-                EffectiveMinute(s, minute + delay), EventPhase.ReportCreate);
-        }
-
-        string action = reaction switch
-        {
-            ImpossibleReaction.Query => $"; запрос уточнения, пауза {delay} мин.",
-            ImpossibleReaction.LiteralStop => "; буквальное исполнение: встал, ответа не ждёт.",
-            _ => "; обход и запасная цель недоступны, запрос не отправлен."
-        };
-        yield return StatusReport(
-            s, f, rng, unit, minute,
-            $"{unit.Name}: не может выполнить приказ ({reason}){action}",
-            ReportKind.Impossible,
-            $"impossible:{unit.Id}");
-    }
-
-    private static bool TryImprovise(
-        GameState s,
-        FrictionTable f,
-        Unit unit,
-        EffectiveOrder order,
-        int minute,
-        RouteState? previous,
-        out RouteState detour,
-        out string note)
-    {
-        detour = null!;
-        note = string.Empty;
-        if (string.IsNullOrWhiteSpace(order.TargetZoneId)) return false;
-
-        var blocked = new HashSet<string>(previous?.BlockedEdges ?? []);
-        if (previous is not null && previous.Index < previous.Plan.Steps.Count)
-            blocked.Add(previous.Plan.Steps[previous.Index].EdgeId);
-
-        if (PathPlanner.TryPlan(s, unit.LocationZoneId, order.TargetZoneId, order.MovementMode, f, out var bypass, blocked) &&
-            !bypass.IsEmpty && FitsDeadline(bypass, order, minute))
-        {
-            detour = new RouteState(order, bypass, 0, minute, blocked);
-            note = $"{unit.Name}: обходит препятствие через {string.Join("→", bypass.Steps.Select(x => x.ToZoneId))}.";
-            return true;
-        }
-
-        if (!s.Zones.TryGetValue(order.TargetZoneId, out var targetZone)) return false;
-        RoutePlan? alternate = null;
-        foreach (var neighbor in targetZone.TravelMinutes.Keys)
-        {
-            if (neighbor == unit.LocationZoneId) continue;
-            if (!PathPlanner.TryPlan(s, unit.LocationZoneId, neighbor, order.MovementMode, f, out var candidate, blocked) ||
-                candidate.IsEmpty || !FitsDeadline(candidate, order, minute)) continue;
-            if (alternate is null || candidate.TotalMinutes < alternate.TotalMinutes)
-                alternate = candidate;
-        }
-        if (alternate is null) return false;
-
-        detour = new RouteState(order, alternate, 0, minute, blocked);
-        note = $"{unit.Name}: выбирает запасную цель {alternate.TargetZoneId}.";
-        return true;
-    }
-
-    private static bool FitsDeadline(RoutePlan plan, EffectiveOrder order, int minute) =>
-        order.NotLaterThan is not int deadline || minute + plan.TotalMinutes <= deadline;
-
-    private static ImpossibleReaction ReactionFor(CommanderTraits traits)
-    {
-        if (traits.Caution >= 2 && traits.Initiative <= 1) return ImpossibleReaction.Query;
-        if (traits.Literalism >= 2 && traits.Caution <= 1) return ImpossibleReaction.LiteralStop;
-        if (traits.Initiative >= 2 && traits.Literalism <= 1) return ImpossibleReaction.Improvise;
-        if (traits.Caution >= 2) return ImpossibleReaction.Query;
-        if (traits.Literalism >= 2) return ImpossibleReaction.LiteralStop;
-        if (traits.Initiative >= 2) return ImpossibleReaction.Improvise;
-        return ImpossibleReaction.Query;
-    }
 
     private Report StatusReport(
         GameState s,
@@ -333,17 +390,23 @@ public sealed class ExecutionResolver : IExecutionResolver
     {
         int jitter = Math.Max(0, f.ReportJitterMinutes);
         int delivery = minute + Math.Max(0, f.ReportBaseDelayMinutes) + rng.Next(0, jitter + 1);
-        int confidence = kind == ReportKind.Impossible && unit.Traits.ReportHonesty < 2 ? 1 : 2;
-        var report = _reports.Create(
+        int confidence = kind switch
+        {
+            ReportKind.Arrival or ReportKind.Impossible or ReportKind.Recon => 3,
+            _ => 2
+        };
+        var report = _reports.CreateWithHonesty(
             minute,
             delivery,
-            unit.Id,
+            unit,
             _rules.ClampConfidence(confidence),
             kind,
             text,
             factKey,
-            unit.Faction,
-            unit.CommanderLost ? $"{unit.Id}-XO" : null);
+            reportedBy: unit.CommanderLost ? $"{unit.Id}-XO" : null,
+            honesty: unit.Traits.ReportHonesty,
+            observedZoneId: kind == ReportKind.Contact ? unit.LocationZoneId : null,
+            observedEnemies: kind == ReportKind.Contact ? EnemiesInZone(s, unit) : Array.Empty<Unit>());
         s.InTransitReports.Add(report);
         s.Clock.Schedule(new ReportDelivered(delivery, report.Id, unit.Id, report),
             EffectiveMinute(s, delivery), EventPhase.ReportDeliver);
@@ -352,13 +415,6 @@ public sealed class ExecutionResolver : IExecutionResolver
 
     private ExecutionState StateFor(GameState s) => _states.GetValue(s, _ => new ExecutionState());
 
-    private enum ImpossibleReaction
-    {
-        Query,
-        LiteralStop,
-        Improvise
-    }
-
     private sealed class ExecutionState
     {
         public Dictionary<string, RouteState> Routes { get; } = new();
@@ -366,49 +422,20 @@ public sealed class ExecutionResolver : IExecutionResolver
 
     private sealed class RouteState
     {
-        public RouteState(
-            EffectiveOrder order,
-            RoutePlan plan,
-            int index,
-            int startedAt,
-            HashSet<string>? blockedEdges = null)
+        public RouteState(EffectiveOrder order, RoutePlan plan, int index)
         {
             Order = order;
             Plan = plan;
             Index = index;
-            StartedAt = startedAt;
-            BlockedEdges = blockedEdges ?? [];
         }
 
         public EffectiveOrder Order { get; }
         public RoutePlan Plan { get; }
         public int Index { get; set; }
-        public int StartedAt { get; }
-        public HashSet<string> BlockedEdges { get; }
-
-        public int RemainingMinutesAfter(int index) =>
-            Plan.Steps.Skip(index).Sum(step => step.Minutes);
     }
 
     private sealed class DefaultGameRules : IGameRules
     {
         public bool IsCombatEffective(Unit unit) => unit.IsCombatEffective;
-    }
-
-    private sealed class DefaultReportFactory : IReportFactory
-    {
-        public Report Create(
-            int eventMinute,
-            int deliveryMinute,
-            string sourceId,
-            int confidence,
-            ReportKind kind = ReportKind.Status,
-            string text = "",
-            string? factKey = null,
-            Faction sourceFaction = Faction.Blue,
-            string? reportedBy = null,
-            Dictionary<string, string>? facts = null) =>
-            Report.Create(eventMinute, deliveryMinute, sourceId, confidence, kind, text, factKey,
-                sourceFaction, reportedBy, facts);
     }
 }

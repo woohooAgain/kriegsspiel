@@ -10,6 +10,16 @@ public sealed class EffectiveOrder
     public string ToUnitId { get; set; } = "";
     public OrderIntent Intent { get; set; }
     public string? TargetZoneId { get; set; }
+    public int? Deadline
+    {
+        get => NotLaterThan;
+        set => NotLaterThan = value;
+    }
+    public string? ForbiddenZoneId { get; set; }
+    public string Outcome { get; set; } = "";
+    public int? CreatedMinute { get; set; }
+    public int? SentMinute { get; set; }
+    public int? DeliverAt { get; set; }
     public string? TargetObjectId { get; set; }
     public string? TargetUnitId { get; set; }
     public string? TargetEdgeId { get; set; }
@@ -34,6 +44,12 @@ public sealed class EffectiveOrder
         ToUnitId = order.ToUnitId,
         Intent = order.Intent,
         TargetZoneId = order.TargetZoneId,
+        Deadline = order.Deadline,
+        ForbiddenZoneId = order.ForbiddenZoneId,
+        Outcome = order.Outcome,
+        CreatedMinute = order.CreatedMinute,
+        SentMinute = order.SentMinute,
+        DeliverAt = order.DeliverAt,
         TargetObjectId = order.TargetObjectId,
         TargetUnitId = order.TargetUnitId,
         TargetEdgeId = order.TargetEdgeId,

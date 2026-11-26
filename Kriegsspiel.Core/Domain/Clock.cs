@@ -2,13 +2,14 @@
 
 public enum EventPhase : byte
 {
-    Delivery = 0,
-    Understanding = 1,
-    Movement = 2,
-    Combat = 3,
-    ReportCreate = 4,
-    ReportDeliver = 5,
-    Scheduled = 6
+    Dispatch = 0,
+    Delivery = 1,
+    Understanding = 2,
+    Movement = 3,
+    Combat = 4,
+    ReportCreate = 5,
+    ReportDeliver = 6,
+    Scheduled = 7
 }
 
 public readonly record struct ScheduledAt(int Minute, EventPhase Phase, long Sequence = 0) : IComparable<ScheduledAt>
@@ -98,18 +99,25 @@ public sealed class Clock
         }
     }
 
-    private static EventPhase PhaseFor(GameEvent e) => e switch
+    public static EventPhase PhaseFor(GameEvent e)
     {
-        OrderDelivered or OrderLost => EventPhase.Delivery,
-        OrderAccepted or OrderMisinterpreted => EventPhase.Understanding,
-        UnitMoved or UnitArrived => EventPhase.Movement,
-        CombatTick => EventPhase.Combat,
-        ReportDue => EventPhase.ReportCreate,
-        _ => PhaseForName(e.GetType().Name)
-    };
+        ArgumentNullException.ThrowIfNull(e);
+        return e switch
+        {
+            OrderDelivered or OrderLost => EventPhase.Delivery,
+            OrderAccepted or OrderMisinterpreted => EventPhase.Understanding,
+            UnitMoved or UnitArrived => EventPhase.Movement,
+            CombatTick => EventPhase.Combat,
+            ReportDue => EventPhase.ReportCreate,
+            _ => PhaseForName(e.GetType().Name)
+        };
+    }
 
-    private static EventPhase PhaseForName(string name)
+    public static EventPhase PhaseForName(string name)
     {
+        ArgumentNullException.ThrowIfNull(name);
+        if (name.Contains("Dispatch", StringComparison.Ordinal))
+            return EventPhase.Dispatch;
         if (name.Contains("Report", StringComparison.Ordinal))
             return name.Contains("Deliver", StringComparison.Ordinal)
                 ? EventPhase.ReportDeliver

@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using Kriegsspiel.Core.Arbitration;
 using Kriegsspiel.Core.Content;
 using Kriegsspiel.Core.Contracts;
 using Kriegsspiel.Core.Domain;
@@ -49,6 +50,9 @@ public sealed class TemplateReportNarrator : IReportNarrator
             FactKey = ctx.Fact.FactKey,
             SourceFaction = ctx.Fact.SourceFaction,
             ReportedBy = ctx.Fact.ReportedBy,
+            ObservedZoneId = ctx.Fact.ObservedZoneId,
+            ReportedOwnStrength = ctx.Fact.ReportedOwnStrength,
+            ReportedEnemyStrength = ctx.Fact.ReportedEnemyStrength,
             Text = text,
             Facts = new Dictionary<string, string>(ctx.Fact.Facts)
         };
@@ -58,22 +62,22 @@ public sealed class TemplateReportNarrator : IReportNarrator
 public sealed class ReportFactory : IReportFactory
 {
     private const int DefaultHonesty = 3;
+    private const double HonestyDistortionPerLevel = 0.12;
 
-    private readonly FrictionTable _friction;
+    public ReportFactory(FrictionTable friction)
+    {
+        ArgumentNullException.ThrowIfNull(friction);
+    }
 
     public ReportFactory(FrictionTable friction, IRandomSource random)
         : this(friction)
     {
+        ArgumentNullException.ThrowIfNull(random);
     }
 
     public ReportFactory(FrictionTable friction, Random random)
         : this(friction, new RandomSourceAdapter(random))
     {
-    }
-
-    public ReportFactory(FrictionTable friction)
-    {
-        _friction = friction;
     }
 
     public Report Create(
@@ -87,9 +91,10 @@ public sealed class ReportFactory : IReportFactory
         Faction sourceFaction = Faction.Blue,
         string? reportedBy = null,
         Dictionary<string, string>? facts = null) =>
-        CreateCore(
+        Report.Create(
             eventMinute, deliveryMinute, sourceId, NormalizeConfidence(kind, confidence),
-            DefaultHonesty, null, sourceFaction, kind, text, factKey, reportedBy, facts);
+            kind, text, factKey, sourceFaction, reportedBy, facts,
+            observedZoneId: ZoneIdFromFacts(facts));
 
     public Report CreateWithHonesty(
         int eventMinute,
@@ -101,125 +106,84 @@ public sealed class ReportFactory : IReportFactory
         string? factKey = null,
         Dictionary<string, string>? facts = null,
         string? reportedBy = null,
-        int? honesty = null) =>
-        CreateCore(
-            eventMinute, deliveryMinute, source.Id, NormalizeConfidence(kind, confidence),
-            Math.Clamp(honesty ?? source.Traits.ReportHonesty, 0, 3), source, source.Faction,
-            kind, text, factKey, reportedBy, facts);
+        int? honesty = null,
+        string? observedZoneId = null,
+        IReadOnlyCollection<Unit>? observedEnemies = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var level = Math.Clamp(honesty ?? source.Traits.ReportHonesty, 0, 3);
+        var normalized = NormalizeConfidence(kind, confidence);
+        int? ownStrength = kind == ReportKind.Recon ? null : DistortStrength(source.Strength, level);
+        var enemyStrength = ResolveEnemyStrength(source, kind, normalized, observedEnemies, level);
+
+        return Report.Create(
+            eventMinute, deliveryMinute, source.Id, normalized, kind, text, factKey,
+            source.Faction, reportedBy, facts,
+            observedZoneId ?? ZoneIdFromFacts(facts), ownStrength, enemyStrength);
+    }
 
     public static int NormalizeConfidence(ReportKind kind, int confidence) =>
-        kind == ReportKind.Recon
-            ? Math.Clamp(confidence, 1, 3)
-            : Math.Clamp(confidence, 1, 2);
+        kind switch
+        {
+            ReportKind.Arrival or ReportKind.Impossible or ReportKind.Request => 3,
+            ReportKind.Contact => 2,
+            ReportKind.QueryAnswer => confidence <= 1 ? 1 : 2,
+            ReportKind.Recon => confidence >= 3 ? 3 : 1,
+            _ => Math.Clamp(confidence, 1, 3)
+        };
 
-    private Report CreateCore(
-        int eventMinute,
-        int deliveryMinute,
-        string sourceId,
-        int confidence,
-        int honesty,
-        Unit? source,
-        Faction sourceFaction,
-        ReportKind kind,
-        string text,
-        string? factKey,
-        string? reportedBy,
-        Dictionary<string, string>? facts)
+    private static int DistortStrength(int strength, int honesty)
     {
-        var (distortedText, distortedFacts) = Distort(text, facts, honesty, source);
-        return Report.Create(
-            eventMinute, deliveryMinute, sourceId, confidence, kind,
-            distortedText, factKey, sourceFaction, reportedBy, distortedFacts);
-    }
-
-    private (string Text, Dictionary<string, string> Facts) Distort(
-        string text,
-        Dictionary<string, string>? facts,
-        int honesty,
-        Unit? source)
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (facts is not null)
-            foreach (var (key, value) in facts)
-                result[key] = value;
-
         if (honesty >= DefaultHonesty)
-            return (text, result);
+            return Math.Max(0, strength);
 
-        var deficit = DefaultHonesty - honesty;
-        var strengthFactor = 1 + deficit * _friction.Reports.HonestyDistortionPerLevel;
-        var lossFactor = Math.Max(0, 1 - deficit * _friction.Reports.HonestyDistortionPerLevel);
-        var actualLosses = LossValue(result);
-
-        foreach (var key in result.Keys.ToList())
-        {
-            if (IsStrengthKey(key) &&
-                int.TryParse(result[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var strength))
-            {
-                result[key] = Math.Max(0, (int)Math.Round(strength * strengthFactor, MidpointRounding.AwayFromZero))
-                    .ToString(CultureInfo.InvariantCulture);
-            }
-            else if (IsLossKey(key) &&
-                     int.TryParse(result[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var losses))
-            {
-                result[key] = Math.Max(0, (int)Math.Round(losses * lossFactor, MidpointRounding.AwayFromZero))
-                    .ToString(CultureInfo.InvariantCulture);
-            }
-        }
-
-        var initialStrength = InitialStrength(result, source);
-        if (actualLosses > 0 && initialStrength > 0 && actualLosses >= initialStrength / 3.0)
-        {
-            result["status"] = "держимся";
-            if (text.Contains("потер", StringComparison.OrdinalIgnoreCase))
-                text = "держимся";
-        }
-
-        return (text, result);
+        var factor = 1 + (DefaultHonesty - honesty) * HonestyDistortionPerLevel;
+        return Math.Max(0, (int)Math.Round(strength * factor, MidpointRounding.AwayFromZero));
     }
 
-    private static bool IsStrengthKey(string key) =>
-        key.Equals("strength", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("currentStrength", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("troops", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsLossKey(string key) =>
-        key.Equals("losses", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("loss", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("casualties", StringComparison.OrdinalIgnoreCase);
-
-    private static int LossValue(IReadOnlyDictionary<string, string> facts)
+    private static int DistortEnemyStrength(int strength, int honesty)
     {
-        foreach (var key in facts.Keys)
-            if (IsLossKey(key) && int.TryParse(facts[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out var losses))
-                return losses;
-        return 0;
+        if (honesty >= DefaultHonesty)
+            return Math.Max(0, strength);
+
+        var factor = Math.Max(0, 1 - (DefaultHonesty - honesty) * HonestyDistortionPerLevel);
+        return Math.Max(0, (int)Math.Round(strength * factor, MidpointRounding.AwayFromZero));
     }
 
-    private static int InitialStrength(IReadOnlyDictionary<string, string> facts, Unit? source)
+    private static int ResolveEnemyStrength(
+        Unit source,
+        ReportKind kind,
+        int normalizedConfidence,
+        IReadOnlyCollection<Unit>? observedEnemies,
+        int honesty)
     {
-        if (facts.TryGetValue("initialStrength", out var value) &&
-            int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var initial))
-            return initial;
-        if (source is null)
+        if (observedEnemies is null || observedEnemies.Count == 0)
             return 0;
-        return source.InitialStrengthSnapshot > 0 ? source.InitialStrengthSnapshot : source.Strength;
+        if (kind == ReportKind.Recon && normalizedConfidence < 3)
+            return 0;
+
+        var total = observedEnemies
+            .Where(unit => unit.Strength > 0 && !unit.Captured && source.IsEnemyOf(unit.Faction))
+            .Sum(unit => unit.Strength);
+        return DistortEnemyStrength(total, honesty);
     }
+
+    private static string? ZoneIdFromFacts(Dictionary<string, string>? facts) =>
+        facts?.GetValueOrDefault("zoneId") ?? facts?.GetValueOrDefault("observedZoneId");
 }
 
 public sealed class ReportDeliveryResolver
 {
-    private const double ReportHostilityWeight = 0.5;
-    private const double OrderLossCeilingRatio = 0.9;
-    private const int HostileZoneReferenceCount = 3;
+    private const string LegBackFactKey = "tLegBack";
 
     private readonly FrictionTable _friction;
     private readonly IRandomSource _random;
 
     public ReportDeliveryResolver(FrictionTable friction, IRandomSource random)
     {
-        _friction = friction;
-        _random = random;
+        _friction = friction ?? throw new ArgumentNullException(nameof(friction));
+        _random = random ?? throw new ArgumentNullException(nameof(random));
     }
 
     public ReportDeliveryResolver(FrictionTable friction, Random random)
@@ -227,64 +191,66 @@ public sealed class ReportDeliveryResolver
     {
     }
 
-    public static double OrderLossProbability(FrictionTable friction, double hostility) =>
-        Math.Clamp(
-            friction.Hq.CourierLossBase + Math.Clamp(hostility, 0, 1) * friction.Hq.CourierLossHostileBonus,
-            0, 1);
-
-    public static double ReportLossProbability(FrictionTable friction, double hostility)
-    {
-        var normalized = Math.Clamp(hostility, 0, 1);
-        var orderLoss = OrderLossProbability(friction, normalized);
-        var reportLoss = friction.Hq.ReportLossBase + normalized * friction.Hq.CourierLossHostileBonus * ReportHostilityWeight;
-        return Math.Clamp(Math.Min(reportLoss, orderLoss * OrderLossCeilingRatio), 0, 1);
-    }
-
-    public static double RouteHostility(GameState state, Faction reporter, string? fromZoneId, string? toZoneId)
-    {
-        var zones = new List<Zone>();
-        if (fromZoneId is not null && state.Zones.TryGetValue(fromZoneId, out var from))
-            zones.Add(from);
-        if (toZoneId is not null && state.Zones.TryGetValue(toZoneId, out var to) && !zones.Contains(to))
-            zones.Add(to);
-        if (zones.Count == 0)
-            zones.AddRange(state.Zones.Values);
-
-        var hostile = zones.Count(zone =>
-            (zone.ControllingFaction is { } faction && IsEnemy(faction, reporter)) ||
-            zone.PresentUnitIds.Any(id =>
-                state.Units.TryGetValue(id, out var unit) && unit.IsEnemyOf(reporter) && !unit.Captured));
-
-        return Math.Min(1, hostile / (double)Math.Max(HostileZoneReferenceCount, zones.Count));
-    }
+    public double ReportLossProbability =>
+        Math.Clamp(_friction.Hq.ReportLossBase, 0, 1);
 
     public bool TryDeliver(
         Report report,
         GameState state,
-        string? fromZoneId = null,
-        string? toZoneId = null,
+        Unit source,
+        double? reportLossProbability = null,
         FrictionTable? friction = null)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(source);
 
         var table = friction ?? _friction;
-        fromZoneId ??= report.Facts.GetValueOrDefault("fromZoneId");
-        toZoneId ??= report.Facts.GetValueOrDefault("toZoneId") ?? report.Facts.GetValueOrDefault("zoneId");
-        var hostility = RouteHostility(state, report.SourceFaction, fromZoneId, toZoneId);
-        if (_random.Chance(ReportLossProbability(table, hostility)))
+        var legBack = ResolveFixedLegBack(report, state, source);
+        report.DeliveryMinute = report.EventMinute + legBack;
+
+        var probability = Math.Clamp(reportLossProbability ?? table.Hq.ReportLossBase, 0, 1);
+        if (_random.Chance(probability))
         {
-            state.LostReports.Add(report);
-            state.EventLog.Add(new ReportLost(report.DeliveryMinute, report.Id));
+            if (!state.LostReports.Any(lost => lost.Id == report.Id))
+                state.LostReports.Add(report);
+            state.EventLog.Add(new ReportLost(report.EventMinute, report.Id));
             return false;
         }
 
-        state.InTransitReports.Add(report);
+        if (!state.InTransitReports.Any(inTransit => inTransit.Id == report.Id))
+            state.InTransitReports.Add(report);
         return true;
     }
 
-    private static bool IsEnemy(Faction left, Faction right) =>
-        left != Faction.Neutral && right != Faction.Neutral && left != right;
+    public static int ResolveLegBackMinutes(GameState state, Unit source)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(source);
+
+        var zoneId = source.IsOnEdge && !string.IsNullOrWhiteSpace(source.EdgeToZoneId)
+            ? source.EdgeToZoneId
+            : source.LocationZoneId;
+        var hqZoneId = state.HqZoneId;
+        if (string.IsNullOrWhiteSpace(hqZoneId))
+            return PathPlanner.MinCourierLegMinutes;
+
+        var minutes = PathPlanner.CourierLegBackMinutes(state, zoneId, hqZoneId);
+        return minutes == int.MaxValue
+            ? PathPlanner.MinCourierLegMinutes
+            : Math.Max(PathPlanner.MinCourierLegMinutes, minutes);
+    }
+
+    private static int ResolveFixedLegBack(Report report, GameState state, Unit source)
+    {
+        if (report.Facts.TryGetValue(LegBackFactKey, out var value) &&
+            int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fixedMinutes))
+            return Math.Max(PathPlanner.MinCourierLegMinutes, fixedMinutes);
+
+        var legBack = ResolveLegBackMinutes(state, source);
+        report.Facts[LegBackFactKey] = legBack.ToString(CultureInfo.InvariantCulture);
+        return legBack;
+    }
 }
 
 internal sealed class RandomSourceAdapter : IRandomSource

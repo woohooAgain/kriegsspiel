@@ -22,6 +22,7 @@ public sealed class Zone
     public required string Name { get; init; }
     public TerrainType Terrain { get; init; }
     public Dictionary<string, int> TravelMinutes { get; init; } = new();
+    public Dictionary<string, int> CourierMinutes { get; init; } = new();
     public int DefenseBonus { get; init; }
     public int Observation { get; init; }
 
