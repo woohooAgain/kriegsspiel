@@ -39,7 +39,8 @@ Kriegsspiel/
 │       ├── tech-debt-intake/SKILL.md           # TD-* и разграничение с PI-*.
 │       ├── process-retro/SKILL.md              # PI-* и замыкание петли мер.
 │       ├── gate-checklist/SKILL.md             # Формальный gate проверяемости.
-│       └── scenario-evidence/SKILL.md          # Воспроизводимые прогоны и evidence.
+│       ├── scenario-evidence/SKILL.md          # Воспроизводимые прогоны и evidence.
+│       └── code-navigation-lsp/SKILL.md        # LSP-first навигация по коду/символам; fallback для docs/config.
 ├── Kriegsspiel.AI/                             # Адаптеры LLM: компиляция приказов, трактовка неоднозначностей, нарратив.
 │   ├── Kriegsspiel.AI.csproj                   # Проект адаптеров LLM.
 │   ├── LlmAmbiguityInterpreter.cs              # LLM-трактовка неоднозначных приказов.
