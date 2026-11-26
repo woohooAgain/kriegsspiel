@@ -27,14 +27,14 @@
 <!-- Новые записи добавляются сверху или по порядку PI-### (не переиспользовать номера). -->
 
 ## PI-001 — Gate по актуальности базы плана и ownership перед стартом волны
-- **Статус:** applied
+- **Статус:** verified
 - **Волны/контекст:** Wave 4 / FS-005, T-24, T-25; refs: Status Envelope (gate C r1 `gate_failed`, r2 `gate_passed` после rebase), commit `1156fba`, `docs/projectDocs/reports/wave-3-report.md` (контекст процесса).
 - **Проблема (факты):** Первоначальная декомпозиция Wave 4 была в старой arch-ветке от базы `501262a`; к моменту gate в `master` уже были `3546794`, `8168b08` и `Content/scenarios/river_line_10x10.json`. Gate C вернул `gate_failed` из-за рассинхрона базы; потребовался rebase плана на `master@8168b08`, добавление `river_line_10x10.json` в масштабную проверку и `structure.md` в ownership T-25.
 - **Причина/гипотеза:** Gate проверял формальную проверяемость плана, но не фиксировал явный precondition «база плана == актуальная целевая база волны» и полноту ownership относительно файлов, появившихся в базе после декомпозиции.
 - **Мера:** В gate/checklist волны добавить обязательный шаг: сверить базовый commit плана с целевой базой, перечислить новые файлы/артефакты базы, затрагивающие сценарий/ownership, и подтвердить, что они отражены в плане/ownership/проверках. При расхождении — `gate_failed` до создания ветки волны.
 - **Критерий проверки эффекта:** В следующих волнах нет повторного `gate_failed`/rebase плана по причине устаревшей базы или пропущенного файла в ownership; при наличии дрейфа базы он ловится на первом gate.
 - **Влияние на сложность:** низко (короткая checklist-проверка с refs на base commit и diff имён файлов).
-- **Результат/наблюдение:** Wave 4 — мера предложена после факта; прямые gate-артефакты r1/r2 в репозитории не найдены, факт подтверждён Status Envelope (пробел данных). Мера встроена в `gate-checklist` п.3; эффект в следующей волне — наблюдение (после Wave 4 данных нет).
+- **Результат/наблюдение:** Wave 4 — мера предложена после факта; прямые gate-артефакты r1/r2 в репозитории не найдены, факт подтверждён Status Envelope (пробел данных). Мера встроена в `gate-checklist` п.3. **Wave 5:** gate r3 (`verifier-gate-mvp-transition-r3.md`) явно сверил базу плана (`340829f`) с целевой (`90acbe6`), дельта — только plan-доки, новых кодовых/контентных файлов нет; `gate_passed` без `gate_failed` по базе. Эффект подтверждён для класса «устаревшая база/пропущенный файл ownership».
 - **Ссылки:** `1156fba`, `8168b08`, `docs/projectDocs/todo.md` (Wave 4/FS-005), `/tmp/opencode/process-master-wave4-input.md`.
 
 ## PI-002 — Проверка UI-пути ввода/меню, а не только модели
@@ -45,41 +45,41 @@
 - **Мера:** Для UI/CLI-задач в `Как проверить`/handoff требовать минимум один воспроизводимый прогон каждого нового/изменённого интерактивного пути (конкретный пункт меню/ввод → наблюдаемый результат) отдельным evidence ref; model/probe-проверки не заменяют input-path.
 - **Критерий проверки эффекта:** В следующих волнах дефекты класса «опечатка/расхождение строки меню и ветки обработки» ловятся implementer/verifier в r1, без отдельного `changes_requested` по тому же пути.
 - **Влияние на сложность:** низко/средне (1-несколько коротких CLI/TTY-прогонов на изменённый путь; в non-TTY среде нужен script/pseudotty).
-- **Результат/наблюдение:** Wave 4 — исправлено в r2, post-merge CLI-фильтр подтверждён. Мера встроена в `scenario-evidence` (раздел TTY/Spectre); эффект в следующей волне — наблюдение.
+- **Результат/наблюдение:** Wave 4 — исправлено в r2, post-merge CLI-фильтр подтверждён. Мера встроена в `scenario-evidence` (раздел TTY/Spectre). **Wave 5:** интерактивных CLI/TTY-шагов в сценарии не было (TTY — Wave 7), поэтому эффект не наблюдался — недостаточно данных, не регрессия.
 - **Ссылки:** `docs/projectDocs/reports/task-T-24-scalable-knowledge-map.md`, `docs/projectDocs/reports/handoffs/implementer-T-24-r2.md`, `9f6c82a`, `e369af2`.
 
 ## PI-003 — Трассируемость ручного merge при отсутствии remote/gh
-- **Статус:** observed
+- **Статус:** verified
 - **Волны/контекст:** Wave 4 / T-24, T-25; refs: task-отчёты T-24/T-25, Status Envelope (нет remote/gh, merge verifier вручную).
 - **Проблема (факты):** MR не создавались из-за отсутствия remote/gh; merge выполнял verifier вручную (`--no-ff`) в ветку волны. Трассируемость сохранена через commit refs, handoff и task-отчёты, но отсутствует внешний MR/CI-артефакт.
 - **Причина/гипотеза:** Ограничение окружения/репозитория (локальный worktree без remote/gh), а не процессный выбор.
 - **Мера:** При отсутствии remote/gh считать обязательным evidence-пакет: ref ветки/commit, handoff, `verifier` task-report с вердиктом, команда/факт merge, post-merge build/test refs. Не маркировать как «MR merged», если MR не существует.
 - **Критерий проверки эффекта:** В средах без remote/gh каждый merge имеет полный локальный evidence-пакет; при появлении remote/gh — возврат к обычному MR-потоку без потери дисциплины.
 - **Влияние на сложность:** низко (фиксация уже существующих refs в отчёте).
-- **Результат/наблюдение:** Wave 4 — наблюдалось; дисциплина evidence в T-24/T-25 выдержана. Данных CI/MR нет по причине окружения (пробел данных, не регрессия).
+- **Результат/наблюдение:** Wave 4 — наблюдалось; дисциплина evidence в T-24/T-25 выдержана. **Wave 5:** manual merge ветки волны в `master` (`79b5fa7`) выполнен в изолированном worktree с полным локальным evidence-пакетом (merge-commit, parents, атрибуция, post-merge build/test 181/181); MR/CI по-прежнему отсутствуют (ограничение окружения). Эффект подтверждён: merge трассируем без внешнего MR.
 - **Ссылки:** `docs/projectDocs/reports/task-T-24-scalable-knowledge-map.md`, `docs/projectDocs/reports/task-T-25-fs005-scale-demo.md`, `e369af2`, `3e1ba9e`.
 
 ## PI-004 — Атрибуция коммитов по роли агента
-- **Статус:** applied
+- **Статус:** verified
 - **Волны/контекст:** вне волны; процессная правка по запросу orchestrator (ветка `process/commit-agent-attribution-r1`).
 - **Проблема (факты):** история git не фиксировала, какая роль агента сделала конкретный коммит/merge; identity бралась из общего `git config`, роли смешивались. Аудит «кто что менял» требовал догадок по путям/отчётам (пробел трассируемости процесса).
 - **Причина/гипотеза:** у процесса не было обязательного механизма атрибуции; роли использовали локальную/глобальную identity без role-разметки.
 - **Мера:** `process-contract` §8: основной способ — per-command identity `git -c user.name=<role> -c user.email=<role>@kriegsspiel.local` для commit/merge; резерв — trailer `Made-by-Agent: <role>` при риске потери identity (squash/cherry-pick/amend/инструменты). Роли-коммиттеры ссылаются на §8; `verifier` сверяет атрибуцию при per-task/wave проверке. Обновлены `.opencode/skills/process-contract`, агенты `analyst/architect/implementer/verifier/scenario-tester/process-master/rules-auditor/docs-maintainer`, `workflows/*`, `instructions.md`.
 - **Критерий проверки эффекта:** в новых коммитах `git log` даёт email роли (`<role>@kriegsspiel.local`), для риск-коммитов — совпадающий `Made-by-Agent`; `verifier` не находит неатрибутированных коммитов в ветках задач/волн; не появляется ручных переписываний истории ради атрибуции.
 - **Влияние на сложность:** низко (одна опция в команде коммита/merge + опциональный trailer; проверка одной командой `git log`).
-- **Результат/наблюдение:** мера внедрена в процессные документы; эффект в следующей волне — наблюдение (данных применения ещё нет). Обратной силы нет: старые коммиты не переписываются.
-- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §8, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, ветка `process/commit-agent-attribution-r1`.
+- **Результат/наблюдение:** **Wave 5:** `git log 90acbe6..8ec2f96` даёт email роли (`implementer@`/`verifier@`/`architect@kriegsspiel.local`) и совпадающий trailer `Made-by-Agent` на всех коммитах диапазона (24/24, включая per-task merge `3b1530d`); неатрибутированных коммитов в ветках задач/волны verifier не нашёл. Эффект подтверждён. Обратной силы нет: старые коммиты не переписывались.
+- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §8, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, ветка `process/commit-agent-attribution-r1`, `wave-5-report.md`.
 
 ## PI-005 — Изоляция запусков агентов через отдельный git worktree
-- **Статус:** applied
+- **Статус:** verified
 - **Волны/контекст:** вне волны; процессная правка по запросу (ветка `process/agent-worktrees-r1`).
 - **Проблема (факты):** внешний `git checkout` в общем каталоге переключал HEAD во время работы; коммит `adb8ba4` (docs/rules) оказался в истории чужой ветки `process/commit-agent-attribution` (reflog: HEAD переключён `docs/rules-simplified-mvp` → `process/commit-agent-attribution` перед этим коммитом). `git branch --contains adb8ba4` подтверждает присутствие в `process/commit-agent-attribution` и `docs/rules-simplified-mvp`. Коллизия повторяющаяся; атрибуция §8 её не предотвращает (она про авторство, не про ветку).
 - **Причина/гипотеза:** агенты работали/коммитили в общем primary checkout, у запуска не было собственной ветки/worktree; HEAD менялся внешними checkout'ами, и коммит попадал в текущую (чужую) ветку.
 - **Мера:** `process-contract` §5.1 — обязательный linked worktree на запуск + собственная ветка, запрет checkout/commit в общем каталоге, проверяемая идентификация «своей» ветки, жизненный цикл worktree, handoff refs `worktree`/`branch@commit`. Ссылки на §5.1 в `.opencode/agent/*`, `file-first-handoff`, `workflows/*`, `instructions.md`; `orchestrator` требует эти refs. Имена веток и §8 сохранены; `.gitignore` игнорирует in-repo `.worktrees/`.
 - **Критерий проверки эффекта:** ни один коммит нового запуска не попадает в ветку, которую запуск не создавал/не получил ref-ом; в Status Envelope есть `worktree` + `branch@commit`; `git worktree list` показывает одну ветку на worktree; в primary checkout нет checkout/commit агентов; `verifier` не находит кросс-веточных коммитов.
 - **Влияние на сложность:** средне (одна команда `git worktree add/remove` на запуск + 2 refs в отчёте; убирает ручные переключения и разбор коллизий).
-- **Результат/наблюдение:** мера внедрена в процессные документы; эффект в следующей волне — наблюдение (данных применения ещё нет). Обратной силы нет: `adb8ba4`/история не переписываются, старые кросс-веточные коммиты — исторический факт.
-- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §5.1, `.opencode/skills/file-first-handoff/SKILL.md`, `.opencode/agent/*`, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, `adb8ba4`, ветка `process/agent-worktrees-r1`, PI-004.
+- **Результат/наблюдение:** **Wave 5:** все роли работали в собственных linked worktree (`/tmp/opencode/ks-implementer-T-50..T-54a-r1`, `ks-verifier-wave5-*`, `ks-scenario-wave5-r*`, `ks-arch-wave5-fix-plan`); кросс-веточных коммитов нет, `master` до штатного merge оставался `cfe3d40`. **Наблюдение (низкое):** ветка волны была вычекана в worktree архитектора с посторонним staged-изменением `todo.md` (r4→r3); verifier обошёл это отдельным worktree, но общий worktree ветки-базы нёс незакоммиченное изменение. Правило отработало (изоляция), риск остаётся для «разделяемого» worktree ветки волны — потребителям не полагаться на его рабочее дерево, только на `branch@commit`. Обратной силы нет: `adb8ba4`/история не переписываются.
+- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §5.1, `.opencode/skills/file-first-handoff/SKILL.md`, `.opencode/agent/*`, `docs/projectDocs/workflows/README.md`, `docs/projectDocs/workflows/task-lifecycle.md`, `docs/projectDocs/instructions.md`, `adb8ba4`, ветка `process/agent-worktrees-r1`, `wave-5-report.md`, `task-T-54a-unit-aware-strength.md` (процесс), PI-004.
 
 ## PI-013 — Единое дерево маршрутизации заметок (feature vs TD-bug/improvement vs PI)
 - **Статус:** applied
@@ -89,7 +89,7 @@
 - **Мера:** дерево решений и таблица маршрутизации зафиксированы в `docs/projectDocs/workflows/README.md` (раздел «Маршрутизация заметок»); ссылки/уточнения — в `feature-spec`, `tech-debt-intake`, `featureBacklog.md`, `featureSpecs/README.md`.
 - **Критерий проверки эффекта:** новые заметки попадают в один «дом»; нет дублей PI↔TD↔BL; роли не спрашивают «куда писать».
 - **Влияние на сложность:** низко (дерево + ссылки).
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект в следующих волнах — наблюдение (данных применения ещё нет).
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** новых `TD-*`/`BL-*` и смешанных заметок не возникло (переход без техдолга, backlog не менялся) — данных для проверки маршрутизации мало; наблюдение продолжается.
 - **Ссылки:** `docs/projectDocs/workflows/README.md` (intake), `docs/gameDocs/featureBacklog.md`, `docs/gameDocs/featureSpecs/README.md`, `.opencode/skills/feature-spec/SKILL.md`, `.opencode/skills/tech-debt-intake/SKILL.md`, PI-014, PI-015.
 
 ## PI-014 — Структурировать featureBacklog (`BL-*`) и закрепить analyst как groomer
@@ -100,7 +100,7 @@
 - **Мера:** новые записи — `BL-###` по шаблону (тип/статус/дата-источник/ценность/заметки/связи); старые пункты 1..31 не переписываются (обратной силы нет); явно указан `analyst` как caretaker/groomer, `architect` потребляет фичи через `FS-*`; связь `BL-* ↔ FS-*` зафиксирована в `featureSpecs/README.md` и `feature-spec`.
 - **Критерий проверки эффекта:** новые идеи имеют `BL-*` и статус; `FS-*`, выросшие из backlog, имеют обратную ссылку на `BL-*`; нет дублирования тел.
 - **Влияние на сложность:** низко/средне (шаблон + дисциплина ссылок).
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект — наблюдение.
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** новых идей backlog нет; `FS-* ↔ BL-*` не задействовано — недостаточно данных.
 - **Ссылки:** `docs/gameDocs/featureBacklog.md`, `docs/gameDocs/featureSpecs/README.md`, `.opencode/skills/feature-spec/SKILL.md`, PI-013.
 
 ## PI-015 — Расширить `TD-*` полями Тип/Severity вместо нового bug-трекера
@@ -111,7 +111,7 @@
 - **Мера:** добавлены поля `Тип: bug|improvement|debt` и `Severity: low|medium|high` (для `bug`); шаблон и владельцы обновлены в `docs/projectDocs/tech-debt.md` и `.opencode/skills/tech-debt-intake/SKILL.md`; отдельный `BUG-*`-трекер не вводится, пока объём мал.
 - **Критерий проверки эффекта:** замечания по текущей реализации фиксируются как `TD-*` с типом; `architect` конвертирует в `T-*`; нет параллельного трекера.
 - **Влияние на сложность:** низко (2 поля).
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект — наблюдение.
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** переход без `TD-*`; поле `Тип`/`Severity` не задействовано — недостаточно данных.
 - **Ссылки:** `docs/projectDocs/tech-debt.md`, `.opencode/skills/tech-debt-intake/SKILL.md`, PI-013, PI-016.
 
 ## PI-016 — Выделить `bugs.md`/`BUG-*` при росте объёма
@@ -122,8 +122,8 @@
 - **Мера:** не вводить `docs/projectDocs/bugs.md`/`BUG-*` сейчас; вернуться к вопросу при подтверждённом объёме багов (анти-сложность).
 - **Критерий проверки эффекта:** при росте объёма `bug` появляется отдельное решение/артефакт; до этого нет параллельного трекера.
 - **Влияние на сложность:** средне/высоко — поэтому отложено.
-- **Результат/наблюдение:** отложено до подтверждённой потребности; активных `TD-*`-багов нет (пробел данных о будущем объёме).
-- **Ссылки:** PI-015, `docs/projectDocs/tech-debt.md`.
+- **Результат/наблюдение:** явно отложено после Wave 5: объём `bug`-записей не вырос (переход закрыт без `TD-*`), отдельный `BUG-*`-трекер преждевременен; порог возврата — подтверждённый рост `Тип: bug`. Не «висит»: решение «не вводить сейчас» зафиксировано.
+- **Ссылки:** PI-015, `docs/projectDocs/tech-debt.md`, `wave-5-report.md`.
 
 ## PI-017 — Исправить порядок `permission.bash` во всех агентах (last-match-wins)
 - **Статус:** applied
@@ -133,7 +133,7 @@
 - **Мера:** во всех `.opencode/agent/*` с `bash`-правилами `"*": ask` поставлен первым, затем `git *`/`dotnet *`/`script *`; правило и проверка зафиксированы в `process-contract` §6 и `gate-checklist` п.8.
 - **Критерий проверки эффекта:** на свежем процессе (без approvals) `implementer` выполняет `git status`, `git show <ref>:<path>`, `dotnet build` без `message=asking`; в логе `action.pattern="git *"`/`"dotnet *"` + `action=allow`; `opencode debug agent <role>` показывает `*: ask` до конкретных allow.
 - **Влияние на сложность:** низко (конфиг, 8 файлов, без кода). Детерминизм: высокий положительный эффект; убирает зависимость от накопленных approvals.
-- **Результат/наблюдение:** конфиг исправлен в ветке `process/process-master-proposals-r1`; эффект требует проверки на свежем процессе/после сброса approvals (в текущем процессе approvals могут маскировать результат). Обратной силы нет — старые сессии/approvals не переписываются.
+- **Результат/наблюдение:** конфиг исправлен в ветке `process/process-master-proposals-r1`. **Wave 5:** мера появилась по факту трения T-53 и в базе Wave 5 ещё не действовала; поведение на свежем процессе не наблюдалось — эффект ожидается в Wave 6. Обратной силы нет — старые сессии/approvals не переписываются.
 - **Ссылки:** `.opencode/agent/{analyst,architect,docs-maintainer,implementer,process-master,rules-auditor,scenario-tester,verifier}.md`; `.opencode/skills/process-contract/SKILL.md` §6; `.opencode/skills/gate-checklist/SKILL.md`; PI-018, PI-020.
 
 ## PI-018 — Командная гигиена: `workdir` вместо `cd`, без составных цепочек
@@ -144,7 +144,7 @@
 - **Мера:** в `process-contract` §6 добавлено правило командной гигиены; краткая инструкция добавлена в `.opencode/agent/*` (bash-роли), `workflows/README.md`; `implementer` отдельно запрещено искать артефакты по чужим веткам.
 - **Критерий проверки эффекта:** в handoff/логах нет `cd`; составные команды — только моноцелевые; permission-запросы по `cd`/`head`/`echo` не появляются на свежем процессе (при выбранной политике allowlist).
 - **Влияние на сложность:** низко (текст роли/процесса); детерминизм: средне-высокий, зависит от соблюдения модели.
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект — наблюдение.
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** мера появилась по факту трения T-53, в базе Wave 5 не действовала; эффект — наблюдение в Wave 6.
 - **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §6, `.opencode/agent/*`, `docs/projectDocs/workflows/README.md`, PI-017.
 
 ## PI-019 — Ref-driven доступ к чужим артефактам (без поиска по веткам)
@@ -155,8 +155,8 @@
 - **Мера:** `process-contract` §5.1/§7 и `file-first-handoff` закрепляют ref-driven (`worktree`, `branch@commit`, путь; нет ref ⇒ `blocked`); `orchestrator.md` требует передавать точные refs; `implementer.md` и другие роли получили явную инструкцию не заниматься discovery.
 - **Критерий проверки эффекта:** implementer-запуски не содержат `git show` по веткам, не переданным в refs; все чтения чужих артефактов идут по `branch@commit`; при отсутствии ref — `blocked`, а не перебор веток.
 - **Влияние на сложность:** низко/средне (дисциплина orchestrator + текст ролей); детерминизм: высокий положительный эффект; риск — чуть больше `blocked` при неполных refs.
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект — наблюдение.
-- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §5.1/§7, `.opencode/skills/file-first-handoff/SKILL.md`, `.opencode/agent/orchestrator.md`, `.opencode/agent/implementer.md`, PI-017.
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** re-gate и scenario r2 читали evidence строго по переданным `branch@commit` (без discovery чужих веток); это сработало. Остаточное трение (низкое): (a) gate-handoff `verifier-gate-mvp-transition-r3.md` отсутствовал в базе ветки волны (`90acbe6`) и читался из primary checkout; (b) handoff T-54a ссылался на строки карточки 308–343 при фактических 308–336 — дрейф номеров строк. Вывод: ref-driven дисциплина выдержана для веток, но линейные ref (номера строк) нестабильны — предпочтительны секции/заголовки или `branch@commit:path`.
+- **Ссылки:** `.opencode/skills/process-contract/SKILL.md` §5.1/§7, `.opencode/skills/file-first-handoff/SKILL.md`, `.opencode/agent/orchestrator.md`, `.opencode/agent/implementer.md`, `implementer-T-54a-r1.md`, `wave-5-report.md`, PI-017, PI-025.
 
 ## PI-020 — Проверка permission-детерминизма на свежем процессе
 - **Статус:** applied
@@ -166,7 +166,7 @@
 - **Мера:** в `gate-checklist` добавлен п.8 (permission-детерминизм, ref на `opencode debug agent <role>`, smoke на свежем процессе); правило отражено в `process-contract` §6.
 - **Критерий проверки эффекта:** в gate/ревью есть ref на вывод `opencode debug agent`; permission-изменения не принимаются по принципу «у меня прошло»; регрессия порядка ловится до merge.
 - **Влияние на сложность:** низко (один чек + ref); детерминизм: высокий положительный эффект.
-- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`; эффект — наблюдение на следующем gate/wave.
+- **Результат/наблюдение:** применено в ветке `process/process-master-proposals-r1`. **Wave 5:** gate r3 прошёл до появления п.8; resolved-permissions на свежем процессе не проверялись — эффект ожидается на следующем gate/wave. Не выдаётся за успех без ref `opencode debug agent`.
 - **Ссылки:** `.opencode/skills/gate-checklist/SKILL.md`, `.opencode/skills/process-contract/SKILL.md` §6, PI-017.
 
 ## PI-021 — Политика read-only shell allowlist vs специализированные инструменты
@@ -177,7 +177,7 @@
 - **Мера (не внедрена):** выбрать и зафиксировать один вариант: (A) только специализированные инструменты, shell — для git/dotnet/script; (B) узкий read-only allowlist (`ls`, `cat`, `head`, `tail`, `sed -n`, `grep`, `rg`, `wc`, `pwd`, `cd`) после `*: ask`. Запретить `find -exec`, `xargs`, `bash -c`, `eval`, `python -c` без отдельного анализа.
 - **Критерий проверки эффекта:** одинаковый набор разрешённых read-only команд во всех ролях; отсутствие «случайных» approvals; новые роли не требуют ручных подтверждений для чтения.
 - **Влияние на сложность:** средне (политика в нескольких файлах); детерминизм: высокий при варианте B, зависит от дисциплины при A.
-- **Результат/наблюдение:** не внедрено — требуется решение пользователя/orchestrator по политике безопасности; PI-018 временно закрывает риск дисциплиной.
+- **Результат/наблюдение:** явно отложено после Wave 5: решение по политике безопасности (A/B) за пользователем/orchestrator, в scope ретро не входит; PI-018 временно закрывает риск дисциплиной. Не «висит» — причина отсрочки зафиксирована.
 - **Ссылки:** PI-017, PI-018; `.opencode/agent/*.md`; документация opencode permissions.
 
 ## PI-022 — `todo.md`: индекс волн + отдельные файлы детализации
@@ -188,8 +188,41 @@
 - **Мера (предложение):** держать в `todo.md` список задач по волнам (короткое имя, короткий summary волны, статус), а детализацию волны — в отдельном файле (путь/формат согласовать с `architect`). Правки `todo.md` — только `architect` в отдельной ветке по спецзапросу.
 - **Критерий проверки эффекта:** `todo.md` не накапливает завершённые задачи; волна имеет короткий summary и ссылку на файл детализации; трассируемость `T-*`/волн сохранена.
 - **Влияние на сложность:** средне (новая структура плана + дисциплина ссылок).
-- **Результат/наблюдение:** не внедрено — вне полномочий `process-master` (нужен отдельный запуск `architect`); блокер зафиксирован.
-- **Ссылки:** `docs/projectDocs/todo.md` (read-only для process-master), `.opencode/agent/architect.md`, `process-contract` §4.
+- **Результат/наблюдение:** явно отложено после Wave 5: правка `todo.md` — только `architect` в отдельном запуске; в scope ретро не входит. Наблюдение Wave 5: план r4 разросся (triage-блок, явные §6-требования по T-55..T-58/T-65), что усиливает аргумент за индекс волн + отдельные файлы детализации; блокер зафиксирован.
+- **Ссылки:** `docs/projectDocs/todo.md` (read-only для process-master), `.opencode/agent/architect.md`, `process-contract` §4, `86cf112`.
+
+## PI-023 — Интеграционная проверка на «швах» ownership в сценарии волны
+- **Статус:** proposed
+- **Волны/контекст:** Wave 5 / T-53, T-54, T-54a; refs: `wave-5-report.md` (r1 `wave_failed` `bb0ce7a` и r2 `wave_passed`), `task-T-54-report-factory-delivery.md`, `handoffs/implementer-T-54-r1.md`, `handoffs/scenario-tester-wave5-r1.md`/`-r2.md`, triage `architect` `86cf112`, `T-54a` `474c3ac`.
+- **Проблема (факты):** `ExecutionResolver.StatusReport` создавал Arrival/Impossible/Status/Contact через legacy `IReportFactory.Create`, оставляя `ReportedOwnStrength`/`ReportedEnemyStrength = null` — нарушение `rules.md §6` на живом production-пути. Разрыв не входил в ownership ни `T-53` (владелец `ExecutionResolver.cs`), ни `T-54` (владелец `ReportFactory`/`IReportNarrator`, но не `ExecutionResolver`). Per-task тесты проверяли фабрику и движение изолированно, а сценарий Wave 5 состоял из build/test/фильтров без assertion на интеграцию «резолвер → фабрика». Разрыв всплыл только на wave-gate после `verified` обеих задач; закрыт triage + `T-54a`.
+- **Причина/гипотеза:** декомпозиция разрезала интерфейс (`IReportFactory`) между двумя задачами, но интеграционная точка (потребитель × новая фабрика) не получила владельца; сценарий волны проверял задачи по отдельности, а не шов.
+- **Мера (предложено):** в `task-decomposition` (шаблон сценария волны) и `gate-checklist` добавить правило: если волна меняет интерфейс/фабрику и её потребителей в разных задачах, сценарий обязан содержать ≥1 assertion на production-путь через границу ownership (integration seam) либо явно закрепить шов за одной задачей; `verifier` на gate проверяет наличие такого пункта, иначе `gate_failed`.
+- **Критерий проверки эффекта:** в следующих волнах при cross-task interface rewrite wave-gate не находит непокрытый интеграционный разрыв; seam-assertion присутствует в сценарии/тестах до wave-gate; нет дополнительного wave-цикла из-за «шва».
+- **Влияние на сложность:** средне (1–2 integration-assertion на волну с пересечением ownership; снижает риск лишнего цикла дороже, чем сам чек). Детерминизм: положительный.
+- **Результат/наблюдение:** Wave 5 — мера предложена после факта; разрыв закрыт вручную (`T-54a`), эффекта в следующей волне ещё нет.
+- **Ссылки:** `docs/projectDocs/reports/wave-5-report.md`, `docs/projectDocs/reports/task-T-54-report-factory-delivery.md`, `docs/projectDocs/reports/task-T-54a-unit-aware-strength.md`, `docs/projectDocs/reports/handoffs/implementer-T-54-r1.md`, `docs/projectDocs/reports/handoffs/scenario-tester-wave5-r1.md`, `bb0ce7a`, `86cf112`, `474c3ac`, PI-024.
+
+## PI-024 — Известное нарушение канона на production-пути эскалируется, а не откладывается заметкой
+- **Статус:** proposed
+- **Волны/контекст:** Wave 5 / T-54 → `wave_failed` r1 → `T-54a`; refs: `handoffs/implementer-T-54-r1.md`, `task-T-54-report-factory-delivery.md`, `handoffs/scenario-tester-wave5-r1.md`, `wave-5-report.md` r1 (`bb0ce7a`), `86cf112`.
+- **Проблема (факты):** handoff и task-отчёт T-54 зафиксировали §6-разрыв как «наблюдение (не блокирует)», перенаправив закрытие на `T-55`/`T-58`, которые не владеют `ExecutionResolver`; при этом раздел «Утверждения T-54 (закрытие)» заявлял закрытие §6 без оговорки. Scenario-tester r1 вернул `passed` с латентной находкой («вне scope Wave 5»), а verifier на том же состоянии — `wave_failed` (требование «без техдолга по переходу»). Один дефект трактовался по-разному; потребовался дополнительный wave-цикл и корректирующая задача.
+- **Причина/гипотеза:** нет правила, что известное нарушение `rules.md` на production-пути нельзя оставлять неблокирующей заметкой или вердиктом `passed`; нет согласованного критерия приёмки «ноль незакрытых переходных нарушений канона» между implementer, scenario-tester и verifier.
+- **Мера (предложено):** в `report-writing`, `scenario-evidence` и ролях `implementer`/`scenario-tester` закрепить: (a) известное нарушение канона на production-пути в handoff/отчёте обязано иметь либо конкретную owning-task + требование с ref, либо эскалацию `architect` как блокер; (b) `scenario-tester` не возвращает `passed`, если на production-пути остаётся известное неразрешённое нарушение `rules.md` (фиксирует `failed`/`blocked` с эскалацией); (c) «Утверждения (закрытие)» не формулируются шире фактического покрытия.
+- **Критерий проверки эффекта:** в следующих волнах статус `scenario-tester` и `verifier` совпадают по известным нарушениям канона; нет «passed → wave_failed» на одном состоянии; известный §-разрыв не уходит в следующий цикл как прозаическая заметка.
+- **Влияние на сложность:** низко/средне (уточнение формулировок ролей/шаблонов, без новых артефактов). Детерминизм: положительный (единый критерий вердикта).
+- **Результат/наблюдение:** Wave 5 — мера предложена после факта; triage `architect` (`86cf112`) уже применил трассировку «причина → `T-54a`», но правило на будущее не зафиксировано.
+- **Ссылки:** `docs/projectDocs/reports/handoffs/implementer-T-54-r1.md`, `docs/projectDocs/reports/task-T-54-report-factory-delivery.md`, `docs/projectDocs/reports/handoffs/scenario-tester-wave5-r1.md`, `bb0ce7a`, `86cf112`, `474c3ac`, PI-023.
+
+## PI-025 — Constraint-проверки diff ограничивать pathspec (`-- '*.cs'`)
+- **Статус:** proposed
+- **Волны/контекст:** Wave 5 / scenario r2; refs: `handoffs/scenario-tester-wave5-r2.md` §4, `wave-5-report.md` (раздел «Ограничения волны»).
+- **Проблема (факты):** проверка «нет новых объявлений `class|record|struct|interface|enum`» без `git diff -- '*.cs'` дала 19 ложных совпадений из markdown-прозы handoff/decision-документов; потребовалась ручная перепроверка с pathspec (`cs-decl-count=0`).
+- **Причина/гипотеза:** grep по всему diff без фильтра по расширению; проза содержит те же ключевые слова, что и объявления типов.
+- **Мера (предложено):** в `scenario-evidence`, `gate-checklist` и шаблоне сценария волны закрепить: constraint-проверки кода выполняются с pathspec (`git diff ... -- '*.cs'`), команда и результат фиксируются в evidence; несфильтрованный diff для «нет новых типов» не используется.
+- **Критерий проверки эффекта:** в следующих волнах constraint-проверки не дают ложных совпадений из docs; воспроизводимая pathspec-команда присутствует в evidence.
+- **Влияние на сложность:** низко (один pathspec). Детерминизм: положительный.
+- **Результат/наблюдение:** Wave 5 r2 — перепроверено вручную; правило на будущее не зафиксировано.
+- **Ссылки:** `docs/projectDocs/reports/handoffs/scenario-tester-wave5-r2.md`, `docs/projectDocs/reports/wave-5-report.md`, PI-018.
 
 ## Зарезервированные номера (не переиспользовать)
 - **PI-006 … PI-012** — кандидаты из `docs/projectDocs/reports/handoffs/process-master-proposals-r1.md` (merge-контур: владелец merge/no-orphan-branch, tighten `ready_to_merge`, inventory веток, gate-остатки, `main`/`master`, merge vs push; EOL-шум). В этом запуске **не внедрялись**: требуют решений Q1–Q3/Q6 (человек/orchestrator) и/или отдельного scope. Номера зарезервированы, чтобы не переиспользовать; обратной силы нет.
