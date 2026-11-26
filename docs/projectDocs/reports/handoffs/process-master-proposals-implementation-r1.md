@@ -66,6 +66,7 @@
 - `todo.md` не изменялся (PI-022 blocked: только `architect`).
 - LSP исключён по решению пользователя.
 - Сторонний строгий YAML-линтер отмечает pre-existing незакавыченное двоеточие в `description` у `.opencode/agent/rules-auditor.md`; файл не менялся по этому полю, `opencode debug agent rules-auditor` резолвит роль корректно (не блокер, наблюдение).
+- Исходные handoff-файлы (`process-master-proposals.md`, `process-master-proposals-r1.md`, `process-master-implementer-permissions-r1.md`) на момент запуска были **untracked** в primary checkout и не включены в эту ветку (это вход, не ownership). Трассируемость до merge — по их путям в primary checkout; после merge refs в журнале указывают на входные handoff (пробел данных, как в PI-001).
 
 ## 5. Следующие шаги
 
