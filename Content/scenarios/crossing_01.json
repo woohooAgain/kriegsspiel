@@ -4,48 +4,43 @@
   "startMinute": 360,
   "endMinute": 720,
   "seed": 1001,
-  "victoryThreshold": 0.7,
+  "hqZone": "B2",
+  "winThreshold": 0.7,
+  "courierPool": {
+    "count": 2,
+    "courierLossProbability": 0.05,
+    "reportLossProbability": 0.03
+  },
   "zones": [
     {
       "id": "B2",
       "name": "Исходный рубеж",
       "terrain": "Open",
       "travelMinutes": { "B3": 20 },
+      "courierTimes": { "B3": 7 },
       "edgeTypes": { "B3": "Road" },
       "defenseBonus": 0,
-      "observation": 2,
-      "controllingFaction": "Blue",
-      "cover": 0.1,
-      "objects": [],
-      "cargo": []
+      "observability": 2
     },
     {
       "id": "B3",
       "name": "Мост у Мельницы",
       "terrain": "Bridge",
       "travelMinutes": { "B2": 20, "B4": 25 },
-      "edgeTypes": { "B2": "Road", "B4": "Crossing" },
+      "courierTimes": { "B2": 7, "B4": 8 },
+      "edgeTypes": { "B2": "Road", "B4": "Road" },
       "defenseBonus": 2,
-      "observation": 2,
-      "controllingFaction": "Neutral",
-      "cover": 0.2,
-      "objects": [
-        { "id": "BRIDGE_B3", "kind": "Bridge", "name": "Мост" }
-      ],
-      "cargo": []
+      "observability": 2
     },
     {
       "id": "B4",
       "name": "Лес восточнее моста",
       "terrain": "Forest",
       "travelMinutes": { "B3": 25 },
-      "edgeTypes": { "B3": "Crossing" },
-      "defenseBonus": 3,
-      "observation": 0,
-      "controllingFaction": "Red",
-      "cover": 0.5,
-      "objects": [],
-      "cargo": []
+      "courierTimes": { "B3": 8 },
+      "edgeTypes": { "B3": "Road" },
+      "defenseBonus": 2,
+      "observability": 1
     }
   ],
   "units": [
@@ -55,35 +50,12 @@
       "type": "Infantry",
       "faction": "Blue",
       "strength": 80,
-      "initialStrengthSnapshot": 80,
+      "initialStrength": 80,
       "readiness": 85,
-      "morale": 70,
-      "fatigue": 0,
       "ammo": 90,
-      "training": 2,
-      "experience": 2,
-      "locationZoneId": "B2",
-      "posture": "March",
-      "speedKmh": 4,
-      "traits": { "initiative": 2, "caution": 1, "literalism": 2, "reportHonesty": 1, "professionalism": 2 }
-    },
-    {
-      "id": "HQ",
-      "name": "Штаб корпуса",
-      "type": "HQ",
-      "faction": "Blue",
-      "strength": 10,
-      "initialStrengthSnapshot": 10,
-      "readiness": 100,
-      "morale": 100,
-      "fatigue": 0,
-      "ammo": 0,
-      "training": 3,
-      "experience": 3,
-      "locationZoneId": "B2",
-      "posture": "Reserve",
-      "speedKmh": 6,
-      "traits": { "initiative": 1, "caution": 1, "literalism": 1, "reportHonesty": 3, "professionalism": 3 }
+      "zoneId": "B2",
+      "posture": "march",
+      "traits": { "init": 2, "pedantry": 2, "honesty": 1 }
     },
     {
       "id": "ENEMY_3BN",
@@ -91,21 +63,16 @@
       "type": "Infantry",
       "faction": "Red",
       "strength": 60,
-      "initialStrengthSnapshot": 60,
+      "initialStrength": 60,
       "readiness": 80,
-      "morale": 75,
-      "fatigue": 0,
       "ammo": 80,
-      "training": 2,
-      "experience": 2,
-      "locationZoneId": "B4",
-      "posture": "Defend",
-      "speedKmh": 4,
-      "traits": { "initiative": 1, "caution": 2, "literalism": 1, "reportHonesty": 0, "professionalism": 2 }
+      "zoneId": "B4",
+      "posture": "defense",
+      "traits": { "init": 1, "pedantry": 1, "honesty": 0 }
     }
   ],
   "objectives": [
-    { "type": "HoldZone", "zone": "B3", "untilMinute": 660, "controlMinutes": [540, 600, 660], "weight": 0.6 },
+    { "type": "HoldZone", "zone": "B3", "weight": 0.6 },
     { "type": "PreserveStrength", "unit": "12IR", "minPercent": 60, "weight": 0.4 }
   ]
 }

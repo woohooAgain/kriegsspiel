@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Kriegsspiel.Core.Content;
+using Kriegsspiel.Core.Domain;
 using Kriegsspiel.Core.Tests.Fixtures;
 
 namespace Kriegsspiel.Core.Tests;
@@ -16,157 +17,283 @@ public sealed class ContentLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Load_RepositoryContentAndFixtures_Succeeds()
+    public void Load_RepositoryScenarios_V04()
     {
-        var loader = new ContentLoader();
-        var root = FindRepoRoot();
-
-        var crossing = loader.Load(
-            Path.Combine(root, "Content", "scenarios", "crossing_01.json"),
-            Path.Combine(root, "Content", "friction.json"),
-            Path.Combine(root, "Content", "reports.json"));
-        Assert.NotNull(crossing.Scenario);
-        Assert.Equal("crossing_01", crossing.Scenario.Id);
-        Assert.True(crossing.Friction.Hq.Couriers >= 1);
-        Assert.Contains("Impossible", crossing.Reports.ByKind.Keys);
-
-        var test = loader.Load(
-            Path.Combine(root, "Content", "scenarios", "test_01.json"),
-            Path.Combine(root, "Content", "friction.json"),
-            Path.Combine(root, "Content", "reports.json"));
+        var test = LoadRepository("test_01");
         Assert.Equal("test_01", test.Scenario.Id);
+        Assert.Equal("START", test.Scenario.HqZoneId);
+        Assert.Equal(2, test.Scenario.CourierCount);
+        Assert.Equal(0.05, test.Scenario.CourierLossProbability, 6);
+        Assert.Equal(0.03, test.Scenario.ReportLossProbability, 6);
+        Assert.Equal(0.7, test.Scenario.WinThreshold, 6);
+        Assert.Equal(0.7, test.Scenario.VictoryThreshold, 6);
+        Assert.False(string.IsNullOrWhiteSpace(test.Scenario.Name));
+        Assert.DoesNotContain(test.Scenario.Units, u => u.Type == UnitType.HQ);
+        Assert.All(test.Scenario.Units, u => Assert.True(u.Faction is Faction.Blue or Faction.Red));
+        Assert.All(test.Scenario.Zones, z =>
+        {
+            Assert.InRange(z.DefenseBonus, 0, 2);
+            Assert.InRange(z.Observation, 1, 3);
+            Assert.All(z.CourierMinutes.Values, c => Assert.True(c > 0));
+            Assert.All(z.EdgeTypes.Values, e => Assert.True(e is EdgeType.Road or EdgeType.Offroad));
+        });
+        Assert.Equal(1.0, test.Scenario.Objectives.Sum(o => o.Weight), 6);
 
-        var bundle = TestContent.Bundle();
-        Assert.NotNull(bundle.Scenario);
-        Assert.NotEmpty(bundle.Scenario.Zones);
-        Assert.NotEmpty(bundle.Scenario.Units);
-        Assert.NotEmpty(bundle.Scenario.Objectives);
-        Assert.True(Math.Abs(bundle.Scenario.Objectives.Sum(o => o.Weight) - 1.0) < 1e-6);
-        Assert.Contains("Impossible", bundle.Reports.ByKind.Keys);
-
-        var tempScenario = WriteTemp("scenario_fixture.json", SerializeScenario(bundle.Scenario));
-        var tempFriction = WriteTemp("friction_fixture.json", SerializeFriction(bundle.Friction));
-        var tempReports = WriteTemp("reports_fixture.json", SerializeReports(bundle.Reports));
-        var loadedFixture = loader.Load(tempScenario, tempFriction, tempReports);
-        Assert.Equal(bundle.Scenario.Id, loadedFixture.Scenario.Id);
-        Assert.Equal(bundle.Scenario.Zones.Count, loadedFixture.Scenario.Zones.Count);
+        var crossing = LoadRepository("crossing_01");
+        Assert.Equal("crossing_01", crossing.Scenario.Id);
+        Assert.Equal("B2", crossing.Scenario.HqZoneId);
+        Assert.DoesNotContain(crossing.Scenario.Units, u => u.Type == UnitType.HQ);
+        var east = crossing.Scenario.Zones.Single(z => z.Id == "B4");
+        Assert.Equal(2, east.DefenseBonus);
+        Assert.Equal(1, east.Observation);
+        Assert.Equal(EdgeType.Road, crossing.Scenario.Zones.Single(z => z.Id == "B3").EdgeTypes["B4"]);
+        Assert.Equal(1.0, crossing.Scenario.Objectives.Sum(o => o.Weight), 6);
     }
 
     [Fact]
-    public void Load_DefaultControlStateWeights_Succeeds()
+    public void Load_LegacyScenariosRemoved()
+    {
+        var root = FindRepoRoot();
+        Assert.False(File.Exists(Path.Combine(root, "Content", "scenarios", "fs005_scale_demo.json")));
+        Assert.False(File.Exists(Path.Combine(root, "Content", "scenarios", "river_line_10x10.json")));
+    }
+
+    [Fact]
+    public void Load_V04Schema_MapsFields()
     {
         var bundle = LoadWith();
-        var weights = bundle.Scenario.Objectives[0].ControlStateWeights;
-        Assert.Equal(3, weights.Count);
-        Assert.True(Math.Abs(weights.Values.Sum() - 1.5) < 1e-6);
+        Assert.Equal("valid_scenario", bundle.Scenario.Id);
+        Assert.Equal("A", bundle.Scenario.HqZoneId);
+        Assert.Equal(2, bundle.Scenario.CourierCount);
+        Assert.Equal(0.05, bundle.Scenario.CourierLossProbability, 6);
+        Assert.Equal(0.03, bundle.Scenario.ReportLossProbability, 6);
+        Assert.Equal(0.7, bundle.Scenario.WinThreshold, 6);
+        Assert.Single(bundle.Scenario.Units);
+        var unit = bundle.Scenario.Units[0];
+        Assert.Equal(Faction.Blue, unit.Faction);
+        Assert.Equal(50, unit.InitialStrengthSnapshot);
+        Assert.Equal(Posture.Defend, unit.Posture);
+        Assert.Equal(1, unit.Traits.Init);
+        Assert.Equal(1, unit.Traits.Pedantry);
+        Assert.Equal(1, unit.Traits.Honesty);
+        Assert.Equal(2, bundle.Scenario.Zones.Single(z => z.Id == "A").Observation);
+        Assert.Equal(10, bundle.Scenario.Zones.Single(z => z.Id == "A").CourierMinutes["B"]);
+        Assert.NotNull(bundle.ScenarioRaw);
     }
 
     [Fact]
-    public void Load_ProbabilityAboveOne_ThrowsValidation()
+    public void Load_HqUnitDefinesHqZoneAndIsNotCombatUnit()
     {
-        var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(frictionMutator: root => root["hq"]!["courierLossBase"] = 1.2));
-        Assert.Contains("courierLossBase", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_ObjectiveWeightsSumNotOne_ThrowsValidation()
-    {
-        var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root =>
+        var bundle = LoadWith(scenarioMutator: root =>
+        {
+            root.AsObject().Remove("hqZone");
+            root["units"]!.AsArray().Add(new JsonObject
             {
-                root["objectives"] = new JsonArray
-                {
-                    new JsonObject { ["type"] = "HoldZone", ["zone"] = "A", ["untilMinute"] = 420, ["controlMinutes"] = new JsonArray(420), ["weight"] = 0.6 },
-                    new JsonObject { ["type"] = "PreserveStrength", ["unit"] = "U1", ["minPercent"] = 50, ["weight"] = 0.6 }
-                };
-            }));
-        Assert.Contains("objectives weight sum", ex.Message, StringComparison.OrdinalIgnoreCase);
+                ["id"] = "HQ",
+                ["name"] = "HQ",
+                ["type"] = "HQ",
+                ["faction"] = "Blue",
+                ["strength"] = 5,
+                ["initialStrength"] = 5,
+                ["readiness"] = 100,
+                ["ammo"] = 0,
+                ["zoneId"] = "A",
+                ["posture"] = "defense",
+                ["traits"] = new JsonObject { ["init"] = 1, ["pedantry"] = 1, ["honesty"] = 3 }
+            });
+        });
+
+        Assert.Equal("A", bundle.Scenario.HqZoneId);
+        Assert.DoesNotContain(bundle.Scenario.Units, u => u.Type == UnitType.HQ);
+        Assert.Equal("U1", Assert.Single(bundle.Scenario.Units).Id);
     }
 
     [Fact]
-    public void Load_ZeroCouriers_ThrowsValidation()
+    public void Load_GameStateFactory_BuildsInitialState()
+    {
+        var bundle = LoadRepository("test_01");
+        var state = GameStateFactory.FromBundle(bundle);
+
+        Assert.Equal("START", state.HqZoneId);
+        Assert.Equal(480, state.EndMinute);
+        Assert.Equal(2001, state.Seed);
+        Assert.Equal(2, state.Couriers.Count);
+        Assert.All(state.Couriers, c => Assert.Equal(CourierState.Idle, c.State));
+        Assert.Equal(2, state.Units.Count);
+        Assert.Contains("1IR", state.Units.Keys);
+        Assert.DoesNotContain("HQ", state.Units.Keys);
+        Assert.Contains("1IR", state.Zones["START"].PresentUnitIds);
+        Assert.Contains("ENEMY_1", state.Zones["OBJ"].PresentUnitIds);
+    }
+
+    [Fact]
+    public void Load_DefenseBonusOutOfRange_Throws()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(frictionMutator: root => root["hq"]!["couriers"] = 0));
-        Assert.Contains("couriers", ex.Message, StringComparison.OrdinalIgnoreCase);
+            LoadWith(scenarioMutator: root => Zone(root, "A")["defenseBonus"] = 3));
+        Assert.Contains("defenseBonus", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Load_DuplicateIds_ThrowsValidation()
+    public void Load_ObservabilityOutOfRange_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Zone(root, "B")["observability"] = 0));
+        Assert.Contains("observability", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_NonPositiveTravelTime_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Zone(root, "A")["travelMinutes"]!["B"] = 0));
+        Assert.Contains("travelTime", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_NonPositiveCourierTime_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Zone(root, "A")["courierTimes"]!["B"] = 0));
+        Assert.Contains("courierTime", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_CourierPoolBelowOne_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Pool(root)["count"] = 0));
+        Assert.Contains("courierPool.count", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_ProbabilitiesOutOfRange_Throws()
+    {
+        var exCourier = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Pool(root)["courierLossProbability"] = 1.5));
+        Assert.Contains("courierLossProbability", exCourier.Message, StringComparison.OrdinalIgnoreCase);
+
+        var exReport = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Pool(root)["reportLossProbability"] = -0.1));
+        Assert.Contains("reportLossProbability", exReport.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_DuplicateIds_Throws()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
             LoadWith(scenarioMutator: root =>
             {
                 var zones = root["zones"]!.AsArray();
-                zones.Add(JsonNode.Parse(zones[0]!.ToJsonString()));
+                zones.Add(zones[0]!.DeepClone());
             }));
         Assert.Contains("duplicate", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Load_BrokenOrAsymmetricEdge_ThrowsValidation()
+    public void Load_AsymmetricEdge_Throws()
     {
-        var exMissing = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root =>
-            {
-                root["zones"]![0]!["travelMinutes"]!["C"] = 10;
-                root["zones"]![0]!["edgeTypes"]!["C"] = "Road";
-            }));
-        Assert.Contains("unknown", exMissing.Message, StringComparison.OrdinalIgnoreCase);
-
-        var exAsymmetric = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root =>
-            {
-                root["zones"]![1]!["travelMinutes"]!.AsObject().Remove("A");
-                root["zones"]![1]!["edgeTypes"]!.AsObject().Remove("A");
-            }));
-        Assert.Contains("symmetric", exAsymmetric.Message, StringComparison.OrdinalIgnoreCase);
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Zone(root, "B")["travelMinutes"]!.AsObject().Remove("A")));
+        Assert.Contains("symmetric", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Load_InvalidEnum_ThrowsValidation()
+    public void Load_InvalidEdgeType_Throws()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root => root["zones"]![0]!["edgeTypes"]!["B3"] = "Hyperloop"));
-        Assert.Contains("edgeTypes", ex.Message, StringComparison.OrdinalIgnoreCase);
+            LoadWith(scenarioMutator: root => Zone(root, "A")["edgeTypes"]!["B"] = "Crossing"));
+        Assert.Contains("edge type", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Load_NonPositiveDeliveryOrReturnTime_ThrowsValidation()
+    public void Load_EndMinuteNotMultipleOf30_Throws()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(frictionMutator: root => root["hq"]!["defaultDeliveryTimeMinutes"] = 0));
-        Assert.Contains("defaultDeliveryTimeMinutes", ex.Message, StringComparison.OrdinalIgnoreCase);
+            LoadWith(scenarioMutator: root => root["endMinute"] = 481));
+        Assert.Contains("multiple of 30", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Load_NegativeCoefficient_ThrowsValidation()
+    public void Load_MissingSeed_Throws()
     {
         var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(frictionMutator: root => root["combat"]!["lethalitySelf"] = -0.1));
-        Assert.Contains("lethalitySelf", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_OrdersP0BelowPMin_ThrowsValidation()
-    {
-        var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(frictionMutator: root =>
-            {
-                root["orders"]!["pMin"] = 0.2;
-                root["orders"]!["p0"] = 0.1;
-                root["orders"]!["pMax"] = 0.9;
-            }));
-        Assert.Contains("p0", ex.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Load_NegativeSeed_ThrowsValidation()
-    {
-        var ex = Assert.Throws<ContentValidationException>(() =>
-            LoadWith(scenarioMutator: root => root["seed"] = -1));
+            LoadWith(scenarioMutator: root => root.AsObject().Remove("seed")));
         Assert.Contains("seed", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_InitialStrengthNonPositive_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Unit(root, "U1")["initialStrength"] = 0));
+        Assert.Contains("initialStrength", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_ReadinessOutOfRange_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Unit(root, "U1")["readiness"] = 101));
+        Assert.Contains("readiness", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_NegativeAmmo_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Unit(root, "U1")["ammo"] = -1));
+        Assert.Contains("ammo", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_TraitsOutOfRange_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => Unit(root, "U1")["traits"]!["pedantry"] = 4));
+        Assert.Contains("pedantry", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_LegacyScenarioWithoutV04Fields_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => root.AsObject().Remove("courierPool")));
+        Assert.Contains("courierPool", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        var exHq = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root => root.AsObject().Remove("hqZone")));
+        Assert.Contains("hqZone", exHq.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Load_DisconnectedGraph_Throws()
+    {
+        var ex = Assert.Throws<ContentValidationException>(() =>
+            LoadWith(scenarioMutator: root =>
+            {
+                root["zones"]!.AsArray().Add(new JsonObject
+                {
+                    ["id"] = "C",
+                    ["name"] = "C",
+                    ["terrain"] = "Open",
+                    ["travelMinutes"] = new JsonObject(),
+                    ["courierTimes"] = new JsonObject(),
+                    ["edgeTypes"] = new JsonObject(),
+                    ["defenseBonus"] = 0,
+                    ["observability"] = 1
+                });
+            }));
+        Assert.Contains("connected", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private ScenarioBundle LoadRepository(string id)
+    {
+        var root = FindRepoRoot();
+        return new ContentLoader().Load(
+            Path.Combine(root, "Content", "scenarios", id + ".json"),
+            Path.Combine(root, "Content", "friction.json"),
+            Path.Combine(root, "Content", "reports.json"));
     }
 
     private ScenarioBundle LoadWith(Action<JsonNode>? scenarioMutator = null, Action<JsonNode>? frictionMutator = null, Action<JsonNode>? reportsMutator = null)
@@ -184,6 +311,14 @@ public sealed class ContentLoaderTests : IDisposable
         return new ContentLoader().Load(scenarioPath, frictionPath, reportsPath);
     }
 
+    private static JsonObject Zone(JsonNode root, string id) =>
+        root["zones"]!.AsArray().OfType<JsonObject>().Single(z => (string?)z["id"] == id);
+
+    private static JsonObject Unit(JsonNode root, string id) =>
+        root["units"]!.AsArray().OfType<JsonObject>().Single(u => (string?)u["id"] == id);
+
+    private static JsonObject Pool(JsonNode root) => root["courierPool"]!.AsObject();
+
     private static JsonNode CreateBaseScenarioNode()
     {
         return new JsonObject
@@ -193,7 +328,14 @@ public sealed class ContentLoaderTests : IDisposable
             ["startMinute"] = 360,
             ["endMinute"] = 480,
             ["seed"] = 1,
-            ["victoryThreshold"] = 0.7,
+            ["hqZone"] = "A",
+            ["winThreshold"] = 0.7,
+            ["courierPool"] = new JsonObject
+            {
+                ["count"] = 2,
+                ["courierLossProbability"] = 0.05,
+                ["reportLossProbability"] = 0.03
+            },
             ["zones"] = new JsonArray
             {
                 new JsonObject
@@ -202,13 +344,10 @@ public sealed class ContentLoaderTests : IDisposable
                     ["name"] = "A",
                     ["terrain"] = "Open",
                     ["travelMinutes"] = new JsonObject { ["B"] = 30 },
+                    ["courierTimes"] = new JsonObject { ["B"] = 10 },
                     ["edgeTypes"] = new JsonObject { ["B"] = "Road" },
                     ["defenseBonus"] = 0,
-                    ["observation"] = 1,
-                    ["controllingFaction"] = "Blue",
-                    ["cover"] = 0.0,
-                    ["objects"] = new JsonArray(),
-                    ["cargo"] = new JsonArray()
+                    ["observability"] = 2
                 },
                 new JsonObject
                 {
@@ -216,13 +355,10 @@ public sealed class ContentLoaderTests : IDisposable
                     ["name"] = "B",
                     ["terrain"] = "Forest",
                     ["travelMinutes"] = new JsonObject { ["A"] = 30 },
+                    ["courierTimes"] = new JsonObject { ["A"] = 10 },
                     ["edgeTypes"] = new JsonObject { ["A"] = "Road" },
                     ["defenseBonus"] = 1,
-                    ["observation"] = 1,
-                    ["controllingFaction"] = "Neutral",
-                    ["cover"] = 0.2,
-                    ["objects"] = new JsonArray(),
-                    ["cargo"] = new JsonArray()
+                    ["observability"] = 1
                 }
             },
             ["units"] = new JsonArray
@@ -234,22 +370,17 @@ public sealed class ContentLoaderTests : IDisposable
                     ["type"] = "Infantry",
                     ["faction"] = "Blue",
                     ["strength"] = 50,
-                    ["initialStrengthSnapshot"] = 50,
+                    ["initialStrength"] = 50,
                     ["readiness"] = 80,
-                    ["morale"] = 80,
-                    ["fatigue"] = 0,
                     ["ammo"] = 100,
-                    ["training"] = 2,
-                    ["experience"] = 1,
-                    ["locationZoneId"] = "A",
-                    ["posture"] = "Reserve",
-                    ["speedKmh"] = 4,
-                    ["traits"] = new JsonObject { ["initiative"] = 1, ["caution"] = 1, ["literalism"] = 1, ["reportHonesty"] = 1, ["professionalism"] = 1 }
+                    ["zoneId"] = "A",
+                    ["posture"] = "defense",
+                    ["traits"] = new JsonObject { ["init"] = 1, ["pedantry"] = 1, ["honesty"] = 1 }
                 }
             },
             ["objectives"] = new JsonArray
             {
-                new JsonObject { ["type"] = "HoldZone", ["zone"] = "B", ["untilMinute"] = 480, ["controlMinutes"] = new JsonArray(420, 480), ["weight"] = 1.0 }
+                new JsonObject { ["type"] = "HoldZone", ["zone"] = "B", ["weight"] = 1.0 }
             }
         };
     }
@@ -264,7 +395,6 @@ public sealed class ContentLoaderTests : IDisposable
         return path;
     }
 
-    private static string SerializeScenario(Scenario scenario) => JsonSerializer.Serialize(scenario, JsonOptions());
     private static string SerializeFriction(FrictionTable friction) => JsonSerializer.Serialize(friction, JsonOptions());
     private static string SerializeReports(ReportTemplates reports) => JsonSerializer.Serialize(reports, JsonOptions());
 
