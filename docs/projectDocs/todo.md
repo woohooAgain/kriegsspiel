@@ -1,713 +1,645 @@
-# TODO: задачи для приведения движка в соответствие правилам
+# TODO: переход на упрощённый MVP-канон `rules.md` v0.4
 
-Источник правил: `docs/gameDocs/rules.md`. Задачи меняют только код и инфраструктуру, не правила.
+Источник требований: `docs/gameDocs/rules.md` (редакция «Ядро движка v0.4», упрощённый MVP-scope). `docs/gameDocs/rules_extended.md` — только справка/архив, **не** целевые требования.
+
+## База плана и границы
+
+- **База плана:** ветка `docs/rules-simplified-mvp` @ `adb8ba4` (parent `master` @ `21357d4`). В базе уже лежит новый `rules.md`, архив `rules_extended.md` и соответствующая запись в `structure.md`; новых кодовых файлов база не содержит.
+- **Не базироваться** на `process/commit-agent-attribution*` (посторонний concurrent commit).
+- **Предыдущий план** (`todo.md` extended-правил, Wave 0–4) заменён: он описывал расширенные механики, которых нет в новом каноне. Исторические отчёты сохранены в `docs/projectDocs/reports/wave-0..4-report.md`; старые карточки доступны в git history до `adb8ba4`. Обратной силы нет: старые отчёты не переписываются.
+- **FS-*:** `N/A` — это миграция действующего канона `rules.md` на упрощённый MVP, а не новая фича/механика; отдельная `FS-*` не требуется. Трассировка идёт напрямую к `rules.md §1–§7`.
+- **Учтённый техдолг:** активных `open`/`planned` записей до этой декомпозиции не было. В рамках планирования зафиксированы `TD-001`–`TD-003` (legacy cleanup, AI/doctrine, миграция оставшихся сценариев) как **вне scope** этого MVP-плана; причины — в `docs/projectDocs/tech-debt.md`.
+- **Окружение (факт на момент планирования):** `dotnet 10.0.404` доступен; `script` (util-linux 2.40.2) доступен для TTY-прогонов Spectre; remote `origin` есть, CI/gh-пайплайна нет. Ограничения фиксировать доказательствами, не выдавать за успех.
+
+## Стратегия миграции (strangler, без «big bang»)
+
+Новый упрощённый канон реализуется **рядом** с legacy extended-движком, в отдельном namespace:
+
+- `Kriegsspiel.Core/Mvp/*` — новая доменная модель, контент-адаптер, резолверы, арбитр, assessment.
+- `Kriegsspiel.Console/Mvp/*` — MVP-команды и игровой цикл; включаются конфигом `Engine=Mvp`.
+- Legacy extended-код (`Kriegsspiel.Core/*`, `Kriegsspiel.AI/*`, старые команды/тесты) **замораживается**: не расширяется, не используется MVP-режимом, но остаётся в решении, чтобы каждая задача и каждая волна собирались и проходили тесты.
+- Legacy-механики (morale/fatigue/contact geometry/ветви/ограничения/режимы движения/пленные/гражданские/груз/отложенные потери/слияние `fact key`/расширенные метрики) **не входят** в MVP и не добавляются. Их удаление — отдельный cleanup после приёмки (`TD-001`).
+- Контент: MVP-поля добавляются в существующие сценарии **аддитивно**; legacy-загрузчик игнорирует неизвестные поля. Новый `mvp_01` задаёт все MVP-поля явно. Оставшиеся legacy-сценарии (`fs005_scale_demo`, `river_line_10x10`) не мигрируются в этом плане (`TD-003`).
+- AI/LLM и `EnemyDoctrine` — внешние контроллеры extended-формата; в MVP-ядро не входят. Для MVP используется детерминированный скриптовый контроллер противника. Приведение AI к simplified `Order` — отдельный `TD-002`.
+
+Почему так: смена доменной модели «на месте» ломает сборку в каждой task-ветке (Core/Console/AI/тесты связаны), а gate требует зелёные build/test на каждой задаче и волне. Strangler даёт непересекающийся ownership, параллельность и проверяемость.
 
 ## Формат и правила работы
 
-- **Формат задачи:** каждая задача содержит `ID`, `Волна`, `Покрывает`, `Владеет файлами`, `Зависимости`, `Что сделать`, `Как проверить`, `Готово, если`. Задача предназначена для прямой выдачи агенту-разработчику без дополнительной декомпозиции.
-- **File ownership:** агент меняет **только** файлы из раздела `Владеет файлами` своей задачи (включая помеченные `(новый)`). Другие файлы, включая тесты/контракты/конфиги соседних задач, не трогать. Если для компиляции/интеграции нужен чужой файл — зависимость выносится в следующую волну.
-- **Ownership плана:** `todo.md` и карточки `T-*` (включая новые/корректирующие задачи после triage) создаёт и правит только `architect` по запуску `orchestrator` в отдельной ветке по специальному запросу. `implementer`, `verifier`, `scenario-tester` и другие роли `todo.md` не правят.
-- **Волны:** внутри одной волны задачи выполняются параллельно и не имеют пересечений по файлам. Следующая волна стартует после завершения предыдущей и прохождения проверок интеграции.
-- **Валидация и merge:** валидация, вердикт `verified` и merge выполняются **строго по одной задаче (`T-XX`)** до влития её MR; batch-валидация/merge пачкой запрещены. Доработки после замечаний — только в ветке той же задачи до merge. Автотесты/проверки из `Как проверить` запускает `implementer` в своей ветке до передачи на верификацию; merge после `verified` выполняет `verifier` (или фиксирует `ready to merge` при отсутствии прав). Канонические отчёты в `docs/projectDocs/reports/` финализирует `verifier`.
-- **Канонические команды проверки:** `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (при появлении отдельных test-проектов — `dotnet test Kriegsspiel.slnx`). В окружении, где `dotnet` отсутствует, это фиксируется как ограничение с доказательствами, а не как успешный прогон.
-- **Gate проверяемости и wave-проверка:** до начала работ по волне `verifier` проверяет наличие и достаточность формальных способов проверки факта выполнения для всех `T-*` волны (`Как проверить`, `Готово, если`) и сценария проверок волны. При недостаточности (в т.ч. нет сценария/проверок волны) — эскалация `orchestrator`, доработка плана `architect` (отдельная ветка по спецзапросу); **ветка волны не создаётся и задачи не запускаются** до прохождения gate. При падении сборки/тестов после merge в ветку волны или на wave-проверке `verifier` не исправляет код/тесты — triage выполняет `architect` и формирует корректирующие `T-*` с обоснованной разбивкой причин (обоснование/маппинг в corrective `T-*` и wave-report: разные причины — несколько задач и при необходимости несколько `implementer`; одна причина с пересекающимся ownership — одна задача; при падении автотестов по умолчанию одна задача на инцидент/причину). После волны `verifier` выполняет wave-проверки на ветке волны по сценарию, описанному `architect`: общие проверки работоспособности + проверки добавленных/изменённых механик; если механики не добавлялись и не менялись — достаточно проверки факта сборки и запуска (детали в `docs/projectDocs/workflows/`).
-- **Трассировка правил:** явные ID правок `K1..D8` в `docs/gameDocs/rules.md` отсутствуют; поле `Покрывает` использует разделы/пункты правил (`§1`–`§14`) и предметные механики. Трассы K/B/D сохранять в тексте задачи там, где применимо (K — knowledge/fog, B — battle/combat, D — delivery/orders flow).
-- **Ограничения:** код без добавления комментариев, если пользователь явно не попросил; `AGENTS.md` и `docs/gameDocs/rules.md` не менять без отдельного запроса.
-- **Техдолг:** перед новой декомпозицией/волной сверяться с `docs/projectDocs/tech-debt.md`; находки вне задачи фиксировать по шаблону, при реализации актуализировать статус/ссылки и соблюдать политику очистки активного списка (`tech-debt-archive.md`).
+- **Формат задачи:** `ID`, `Волна`, `Покрывает`, `Владеет файлами`, `Зависимости`, `Что сделать`, `Как проверить`, `Готово, если`. Задача выдаётся `implementer` без дополнительной декомпозиции.
+- **File ownership:** исполнитель меняет только файлы из `Владеет файлами` (включая `(новый)`). Legacy-файлы вне ownership не трогать. Новые MVP-файлы не должны импортировать legacy-типы extended-механик.
+- **Волны:** внутри волны задачи не пересекаются по файлам и запускаются группами launch-плана. Следующая волна — после merge предыдущей и wave-gate.
+- **Валидация/merge:** строго по одной `T-XX`; `implementer` не мержит; `verifier` мержит после `verified`; batch запрещён.
+- **Gate:** у каждой задачи есть воспроизводимые `Как проверить` и `Готово, если`; у волны — сценарий проверок. При недостаточности ветка волны не создаётся.
+- **Канонические команды:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx` (полный набор: legacy + MVP); точечно — `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "<Mvp...>"`.
+- **Ограничения:** код без комментариев, если не просили; `AGENTS.md` и `docs/gameDocs/rules.md` не менять; `docs/projectDocs/todo.md` правит только `architect`.
+- **Трассировка:** `Покрывает` ссылается на `docs/gameDocs/rules.md §1–§7`; трассы K/B/D — где применимо. Не придумывать несуществующие ID.
 
 ## Карта волн
 
-| Волна | Задачи | Зависимости | Правило | Сценарий проверок волны |
+| Волна | Задачи | Зависимости | Launch-план (группы) | Сценарий проверок волны |
 |---|---|---|---|---|
-| Wave 0 — фундамент | `T-01`, `T-02`, `T-03` | нет | Параллельно, файлы не пересекаются. Закладывает доменные типы, контракты, часы, контент и валидацию. | См. детально: «Сценарии проверок волн (детально)» → Wave 0. Кратко: `dotnet build` + `dotnet test ...Core.Tests` + дублирование `Как проверить` `T-01`–`T-03` (`DomainInvariantsTests`, `ClockTests`, `ContentLoaderTests`). |
-| Wave 1 — механики ядра | `T-10`, `T-11`, `T-12`, `T-13`, `T-14`, `T-15`, `T-16`, `T-17`, `T-18` | Wave 0 | Параллельно, файлы не пересекаются. Реализации опираются на контракты/типы Wave 0, `Arbiter` не трогают (кроме задач-владельцев). | См. детально: «Сценарии проверок волн (детально)» → Wave 1. Кратко: `dotnet build` + `dotnet test` (Core.Tests/solution) + дублирование `Как проверить` `T-10`–`T-18` по фильтрам/утверждениям задач (все механики волны). |
-| Wave 2 — координация | `T-20` | Wave 0, Wave 1 | Единственная задача интеграции конвейера в `Arbiter`. | См. детально: «Сценарии проверок волн (детально)» → Wave 2. Кратко: `dotnet build` + `dotnet test` + дублирование `Как проверить` `T-20` (`ArbiterIntegrationTests`, §14) + отсутствие регрессий Wave 0–1. |
-| Wave 3 — CLI/UI, интеграция, уборка | `T-21a`, `T-21b`, `T-21c`, `T-21d`, `T-21e`, `T-22`, затем `T-23` | Wave 2 (`T-23` — после всех задач Wave 3) | `T-21a`–`T-21e`, `T-22` параллельно по непересекающимся файлам; `T-23` финальный (ренеймы/чистка/документация) после завершения всех остальных. | См. детально: «Сценарии проверок волн (детально)» → Wave 3. Кратко: `dotnet build` + `dotnet test Kriegsspiel.slnx` + дублирование `Как проверить`/ручных сценариев `T-21a`–`T-21e`, `T-22`; для `T-23` — сборка/тесты/smoke + проверки переименований/доков (без новой игровой механики). |
-| Wave 4 — FS-005 (большие карты, консоль) | `T-24`, `T-25` | Wave 3 | Параллельно, файлы не пересекаются. Launch-план: G1=`T-24` (`Kriegsspiel.Console/Commands/MapCommand.cs`, `MapRenderer.cs`), G2=`T-25` (`Content/scenarios/fs005_scale_demo.json` (новый), `Kriegsspiel.Core.Tests/Fs005ScaleContentTests.cs` (новый), `docs/projectDocs/structure.md`) — старт параллельно после gate; merge в ветку волны по одной задаче после `verified` (порядок любой); wave-gate после merge обоих. | См. детально: «Сценарии проверок волн (детально)» → Wave 4. Кратко: `dotnet build Kriegsspiel.slnx` + `dotnet test Kriegsspiel.slnx` + дублирование `Как проверить` `T-24`–`T-25` + ручная проверка КАРТА (обзор↔деталь/фокус, топология, фильтр/поиск/сводка, §6, юниты, масштаб) на `fs005_scale_demo` и/или на уже присутствующем в базе `river_line_10x10` (100 зон), регрессия на `test_01`/`crossing_01`/`river_line_10x10`. |
+| Wave 5 — MVP-фундамент | `T-30`, `T-31`, `T-32`, `T-33` | нет; `T-31` после `T-30`; `T-32`/`T-33` после `T-30`+`T-31` | G1=`T-30`; G2=`T-31`; G3=`T-32`,`T-33` (параллельно, файлы не пересекаются) | См. «Wave 5 — сценарий». Кратко: build + полный test + фильтр Mvp-фундамента; проверки домена/графа/часов/RNG/контента/донесений. |
+| Wave 6 — MVP-механики ядра | `T-34`–`T-39` | Wave 5; межзадачные вызовы только через контракты `T-30` | G1=`T-34`,`T-35`,`T-36`,`T-37`,`T-38`,`T-39` (параллельно) | См. «Wave 6 — сценарий». Кратко: build + полный test + фильтры transmission/order/execution/combat/recon/victory; проверки формул канона §4–§7. |
+| Wave 7 — MVP-интеграция и режим запуска | `T-40`, `T-41`, `T-42a`, `T-42b`, `T-42c`, `T-43` | Wave 6; `T-41`/`T-42a`/`T-42b`/`T-43` после `T-40`; `T-42c` после `T-41`/`T-42a`/`T-42b`/`T-43` | G1=`T-40`; G2=`T-41`,`T-42a`,`T-42b`,`T-43`; G3=`T-42c` | См. «Wave 7 — сценарий». Кратко: build + полный test + Mvp integration/scenario + TTY-прогон `--Engine Mvp --Scenario mvp_01`; legacy-регрессия. |
+| Wave 8 — документация/структура | `T-44` | Wave 7 | G1=`T-44` (роль `docs-maintainer`, не `implementer`) | См. «Wave 8 — сценарий». Кратко: build/test не затронуты; `structure.md`/`readme.md` отражают Mvp-файлы и режим; `AGENTS.md`/`rules.md` не изменены. |
 
 ## Сценарии проверок волн (детально, для verifier)
 
-Общие правила выполнения wave-проверки:
-- Выполнять **на ветке волны** после merge всех задач волны (или на согласованном состоянии интеграции волны), до merge ветки волны в `main`.
-- Канонические команды: `dotnet build Kriegsspiel.slnx`, `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (при появлении отдельных test-проектов — `dotnet test Kriegsspiel.slnx`). В окружении без `dotnet` — зафиксировать ограничение с доказательствами (не считать прогон успешным).
-- «Дублировать проверки `Как проверить` `T-XX`» означает: выполнить команды/шаги из раздела `Как проверить` задачи и подтвердить перечисленные в нём утверждения/ожидания на состоянии ветки волны.
+Общие правила:
+- Выполнять **на ветке волны** после merge всех задач волны, до merge в `main`.
+- `dotnet build Kriegsspiel.slnx` — успех, 0 ошибок; `dotnet test Kriegsspiel.slnx` — все тесты (legacy + MVP) зелёные. В окружении без `dotnet` — ограничение с доказательствами, не успех.
+- «Дублировать `Как проверить` `T-XX`» = выполнить команды/шаги задачи и подтвердить её утверждения на состоянии ветки волны.
+- MVP-тесты находятся в `Kriegsspiel.Core.Tests/Mvp/*`; legacy-тесты не удаляются и не переписываются в Wave 5–7.
 
-### Wave 0 — сценарий проверок волны
-- **Общие проверки работоспособности:** `dotnet build Kriegsspiel.slnx` (успех, 0 ошибок); `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (все тесты зелёные).
+### Wave 5 — сценарий проверок волны
+- **Общие:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpDomainTests|MvpGraphPathTests|MvpClockTests|MvpRandomTests|MvpContentLoaderTests|MvpReportTests"`.
+- **Проверки добавленных механик (дублировать из задач):**
+  - `T-30` (домен/контракты/граф): `MvpDomainTests`, `MvpGraphPathTests`. Утверждения: `IsCombatEffective` = только `strength >= 0.30 * initialStrength`; location node/edge; один `pendingOrder`; `Order` только move/hold/recon + targetZone/deadline/forbiddenZone; `Report` confidence 1..3 и обязательные поля; `GameState` содержит курьеров/очереди/отчёты/лог; Dijkstra по `travelTime` и `courierTime`, `offroad*0.8` только при `deadline==null`, `forbiddenZone==start` запрещает возврат, `T_leg >= 5`.
+  - `T-31` (часы/RNG): `MvpClockTests`, `MvpRandomTests`. Утверждения: стабильный порядок `(minute, phase, sequence)`; фазы Dispatch→Delivery→Movement→Combat→ReportDelivery→Scheduled; запрет планирования в прошлое; `PendingCount`; одинаковый seed → одинаковая последовательность; `Restore` возвращает состояние.
+  - `T-32` (контент): `MvpContentLoaderTests`. Утверждения: `test_01`/`crossing_01` загружаются MVP-загрузчиком (`mvp_01` — зона T-41); негативные кейсы (defenseBonus вне 0..2, observability вне 1..3, travelTime/courierTime <= 0, K<1, вероятности вне [0,1], дубли id, несимметричное ребро, endMinute не кратен 30, seed отсутствует, initialStrength<=0, readiness вне 0..100, ammo<0, traits вне 0..3) дают контролируемую ошибку; legacy-загрузчик и legacy-тесты не сломаны.
+  - `T-33` (донесения/лог): `MvpReportTests`. Утверждения: обязательные поля; confidence по §6 (Arrival/Impossible/Clarification=3, Contact/QueryReply=2, Recon fail/adjacent QueryReply=1); `reportedOwnStrength=null` для ReconResult; искажение honesty 0.12; лог хранит все версии без слияния/снижения confidence; потеря донесения `rand()<p_report_loss`; доставка `eventMinute+T_leg_back`.
+- **Критерий:** общие команды успешны, проверки `T-30`–`T-33` подтверждены, legacy-регрессий нет.
+
+### Wave 6 — сценарий проверок волны
+- **Общие:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpTransmissionTests|MvpOrderInterpreterTests|MvpExecutionTests|MvpCombatTests|MvpReconTests|MvpObjectiveTests|MvpMetricsTests"`.
+- **Проверки добавленных механик (дублировать из задач):**
+  - `T-34` (курьеры/запросы/тишина): `MvpTransmissionTests`. Утверждения: приоритет Query>Order, далее FIFO; при занятых курьерах ETA от фактической отправки; `T_leg` min 5 и `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; потеря на `sentMinute`; возврат `sentMinute+2*T_leg+60`; `QueryReply` в `deliverAt`; `deliveryMinute=deliverAt+T_leg_back`, `expectedReplyAt=deliverAt+T_leg_back+15`; `SilenceDetected`; потерянный курьер — `sentMinute+2*T_leg+30`.
+  - `T-35` (понимание приказа): `MvpOrderInterpreterTests`. Утверждения: A=0; +0.70 при targetZone==null и intent!=hold; +0.15 при deadline==null и intent==move; P=clamp(0.03+A*(1+0.15*pedantry-0.10*init),0.03,0.90); конфликт forbiddenZone по pedantry/init; искажение при A>0 и pedantry<2 (target null → случайный смежный; recon — узел через ребро от смежного; target != null → swap move/hold); pedantry>=2 → ClarificationRequest; deadline expiry; pendingOrder перезаписывается и применяется на завершении ребра.
+  - `T-36` (движение): `MvpExecutionTests`. Утверждения: `remainingMinutes` уменьшается по 1/мин; завершение ребра и немедленный переход на следующее в тот же тик; `remainingMinutes` нового ребра не уменьшается в этом тике; offroad −5 readiness; фактическое время = `travelTime`; posture march/attack/defense; после move в свободный targetZone effectiveOrder.intent→hold; нет телепорта; hold/recon не двигаются.
+  - `T-37` (бой/отход): `MvpCombatTests`. Утверждения: бой на `t%30==0`; Power по §7 (posture march/attack/defense, terrain только defense, ammo 0→0.5); одновременные потери `0.25*Power_enemy/(sum)*strength`; ammo−1, readiness−10; strength 0 → удаление; отход при strength<0.30*initial в смежный узел без противника с min travelTime; иначе уничтожение.
+  - `T-38` (разведка/контакт): `MvpReconTests`. Утверждения: `p_detect=clamp(0.25+0.15*observability-edgePenalty,0.10,0.95)`; edgePenalty 0.15 при входе/offroad recon, 0 при периодической проверке в узле; каденция каждый 1-мин тик с deliverAt; успех → один ReconResult confidence 3 и остановка; 30-мин окно → один ReconResult confidence 1; смена приказа сбрасывает окно; Contact confidence 2; recon из соседнего узла не участвует в бою.
+  - `T-39` (победа/разбор): `MvpObjectiveTests`, `MvpMetricsTests`. Утверждения: Score=Σ W_v*StateScore; Achieved/Contested/Failed по §7; победа при Score>=WinThreshold; для приказа фиксируются createdMinute/sentMinute/deliverAt/original/effective/status; метрики: avg(deliverAt-createdMinute) по доставленным, доля A>0, доля Distorted/Failed-Rejected; расширенных метрик нет.
+- **Критерий:** общие команды успешны, проверки `T-34`–`T-39` подтверждены, legacy-регрессий нет.
+
+### Wave 7 — сценарий проверок волны
+- **Общие:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpArbiterIntegrationTests|MvpScenarioTests|MvpOrderDraftBuilderTests|MvpPresentationTests|MvpPersistenceTests"`.
 - **Проверки добавленных/изменённых механик (дублировать из задач):**
-  - `T-01` (`Domain and contracts`): дублировать `Как проверить` T-01 — `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter DomainInvariantsTests`. Утверждения: `CombatEffective` false при нарушении любого порога; `Report`/DTO требуют event minute, delivery minute, source, confidence; `PlayerKnowledge` различает «нет данных»/«пусто»; `Order` хранит `orderVersion` и ветви; `GameState` содержит `InTransitReports`, `CourierPool`, `Seed`/RNG state, `PendingCasualties`.
-  - `T-02` (`Clock and event ordering`): дублировать `Как проверить` T-02 — build + `--filter ClockTests`. Утверждения: порядок при равной минуте `Delivery→Understanding→Movement→Combat→ReportCreate→ReportDeliver→Scheduled`; `Schedule` в прошлое бросает исключение; `AdvanceTo(Now)` не теряет события; `PendingCount` уменьшается при извлечении.
-  - `T-03` (`Content profile and validation`): дублировать `Как проверить` T-03 — build + `--filter ContentLoaderTests`. Утверждения: валидный контент/`TestContent` загружается; контролируемые ошибки валидации при вероятности `>1`, сумме весов `!=1`, `couriers==0`, дублирующем id, несимметричном/несуществующем ребре, невалидном enum/времени.
-- **Критерий прохождения:** команды успешны, проверки T-01–T-03 подтверждены (состояние зафиксировано в `reports/wave-0-report.md`).
+  - `T-40` (арбитр/тик): `MvpArbiterIntegrationTests`. Утверждения: порядок шагов §2 (отправка → доставка/интерпретация → движение/обнаружение/deadline → бой+отдых каждые 30 → доставка донесений/возврат курьеров/SilenceDetected); лексикографический порядок id; CommandPhase каждые 30; in-transit донесение не теряется на границе; `TurnResult` содержит только доставленное к target; одинаковый seed → одинаковый EventLog.
+  - `T-41` (сценарий/противник): `MvpScenarioTests`. Утверждения: `mvp_01` загружается; скриптовый контроллер подаёт enemy-приказы в том же `Order`-формате на CommandPhase; полный прогон до endMinute детерминирован; победа/поражение считается; нет скрытой истины в MVP-событиях (ядро не читает лишнее).
+  - `T-42a` (UI приказа): `MvpOrderDraftBuilderTests`; ручной сценарий. Утверждения: доступны только move/hold/recon, targetZone, deadline, forbiddenZone; нет ветвей/ограничений/режимов движения; предпросмотр A/P; заказ не раскрывает скрытую истину.
+  - `T-42b` (карта/журнал/обстановка): `MvpPresentationTests`; ручной сценарий. Утверждения: карта/журнал используют только доставленные донесения/лог и топологию; показывают no-data/empty/occupied, confidence, event/delivery time, все версии без слияния; `QuerySilence` и `ReportLost` различимы; нет чтения скрытой истины.
+  - `T-42c` (shell/DI): build + TTY-прогон. `script -qec "dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj -- --Engine Mvp --Scenario mvp_01" /tmp/opencode/mvp-smoke.log`; меню содержит ОБСТАНОВКА/КАРТА/ПРИКАЗ/ЗАПРОС/ЖУРНАЛ/ВРЕМЯ/СОХРАНИТЬ/ЗАГРУЗИТЬ/ВЫЙТИ; приказ/время/карта/журнал работают; `Engine=Legacy` не сломан.
+  - `T-43` (persistence): `MvpPersistenceTests`. Утверждения: round-trip сохраняет минуту/очередь часов, RNG state/seed, зоны/рёбра/локации юнитов, приказы/effective/pending, курьеров/ETA, in-transit/delivered отчёты, report log, EventLog; после load продолжение детерминировано.
+- **TTY/детерминизм:** два прогона `mvp_01` с одинаковым seed дают одинаковый набор событий/донесений (сравнить хэш/refs); вход подавать через `script`/файл, не интерактивно.
+- **Legacy-регрессия:** `dotnet test Kriegsspiel.slnx` зелёный; `dotnet run -- --Scenario test_01` (legacy) работает как до волны; diff вне Mvp-файлов/аддитивного контента/`ServiceRegistration`/`appsettings` отсутствует.
+- **Критерий:** общие команды, проверки `T-40`–`T-43`, TTY-прогон и legacy-регрессия подтверждены.
 
-### Wave 1 — сценарий проверок волны
-- **Общие проверки работоспособности:** `dotnet build Kriegsspiel.slnx` (успех); `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (все тесты Wave 0 + Wave 1 зелёные). При появлении отдельных test-проектов — `dotnet test Kriegsspiel.slnx`.
-- **Проверки добавленных/изменённых механик (дублировать из задач):**
-  - `T-10` (курьеры/передача, D): дублировать `Как проверить` T-10 — build + `--filter TransmitionResolverTests`. Утверждения: FIFO и ETA от фактической отправки при занятых курьерах; приоритет запроса над приказом; потеря на обратном пути не отменяет доставку приказа, но `deliveryConfirmed=false`; замена курьера через 60 мин после расчётного возврата; воспроизводится пример §14 (06:15 выдан → доставка 06:45 при deliveryTime=30, возврат по ETA).
-  - `T-11` (неоднозначность/понимание, D): дублировать `Как проверить` T-11 — build + `--filter "AmbiguityScorerTests|UnderstandingResolverTests"`. Утверждения: веса A и clamp (нет цели/расплывчатость/дедлайны/ветви); `Hold` с пустым `Куда` не даёт +0.7; при A=0 P не ниже `max(P0,Pmin)`; конфликт решается до P по чертам; один roll на приказ; `clarify` создаёт запрос/событие без `OrderMisinterpreted`; `shift` только к соседу из знания; ветви по знанию и ≤3.
-  - `T-12` (исполнение/маршрутизация, D/B): дублировать `Как проверить` T-12 — build + `--filter ExecutionResolverTests`. Утверждения: multi-hop маршрут и корректное время; непроходимое ребро исключается/меняет маршрут; вход в занятую зону до цели создаёт боевой контакт/тик по контракту; при невыполнимом приказе исход по чертам (импровизация/стоп+запрос/доминирующая пара); нет телепорта, соблюдение дедлайна/режима.
-  - `T-13` (бой/геометрия контакта, B): дублировать `Как проверить` T-13 — build + `--filter CombatResolverTests`. Утверждения: детерминизм при одинаковом входе/seed (без random 1.0–1.1); front/flank/rear (flank: collision 1.4, −10 морали; rear: 1.8, −15); terrain-бонус только в обороне; ровно половина потерь планируется в `PendingCasualties`; `Ammo==0` снижает эффективность; `PoorControl`/auto-withdraw/эффекты учтены.
-  - `T-14` (туман войны/разведка/донесения, K/D): дублировать `Как проверить` T-14 — build + `--filter "FogOfWarTests|ReportTests"`. Утверждения: противоречия по `fact key` снижают уверенность и сохраняют обе версии; повышение уверенности не применяется к конфликтующим версиям; обычный отчёт не даёт confidence 3; recon success/fail ветви (в т.ч. неосознанное заблуждение по профилю/obs); знание не содержит скрытых истинных полей юнитов/зон; нарратор/шаблоны без выдумывания фактов.
-  - `T-15` (цели/AAR): дублировать `Как проверить` T-15 — build + `--filter ObjectiveEvaluatorTests`. Утверждения: `Contested` = 0.5; итог Σ(вес×доля) vs порог 0.7; контрольные минуты/partial/уничтожение P%; все 8 метрик §10, реакция не засчитывает `ВРЕМЯ +30`, потери `PoorControl` включают отложенные, потерянный приказ учтён по правилу.
-  - `T-16` (persistence DTO/load): дублировать `Как проверить` T-16 — build + `--filter PersistenceTests`. Утверждения: round-trip save/load сохраняет минуту, `PendingCount`/очередь `Clock`, seed/state RNG, in-transit reports, курьеры/ETA, pending casualties, knowledge (включая конфликтующие версии), `orderVersion`, типы полиморфных событий.
-  - `T-17` (AI/LLM adapter): дублировать `Как проверить` T-17 — `--filter AIAdapterTests` (и/или сборка `Kriegsspiel.AI/Kriegsspiel.AI.csproj` при локальной доступности; после T-22 — в составе solution). Утверждения: невалидный ответ отклоняется → fallback; narrator не добавляет факты/время/источник/уверенность; контекст врага без скрытых полей игрока; фиксированный seed/log воспроизводим. Если сборка/запуск проекта недоступны до интеграции — явно зафиксировать ограничение и доказательства.
-  - `T-18` (доктрина противника): дублировать `Как проверить` T-18 — build + `--filter EnemyDoctrineTests`. Утверждения: одинаковый seed+состояние → одинаковые приказы; при отключённом/недоступном LLM — doctrine/fallback; приказ соответствует закрытым спискам/слотам; вход без скрытой истины игрока.
-- **Критерий прохождения:** общие команды успешны, проверки T-10–T-18 подтверждены на ветке волны, регрессий Wave 0 нет.
+### Wave 8 — сценарий проверок волны (docs/structure)
+- **Общие:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx` — без изменений (docs не влияют).
+- **Проверки:** `structure.md` содержит все новые `Kriegsspiel.Core/Mvp/*`, `Kriegsspiel.Console/Mvp/*`, `Kriegsspiel.Core.Tests/Mvp/*`, `Content/scenarios/mvp_01.json`; `readme.md` описывает MVP-режим `--Engine Mvp`, legacy-режим и `TD-001`–`TD-003`; `git diff --name-only` по волне содержит только docs; `AGENTS.md` и `docs/gameDocs/rules.md` не изменены.
+- **Критерий:** docs полны и консистентны; код/тесты не менялись.
 
-### Wave 2 — сценарий проверок волны
-- **Общие проверки работоспособности:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (или `dotnet test Kriegsspiel.slnx` при отдельных test-проектах), без регрессий Wave 0–1.
-- **Проверки добавленных/изменённых механик (дублировать из задач):**
-  - `T-20` (интеграция `Arbiter`): дублировать `Как проверить` T-20 — build + `--filter ArbiterIntegrationTests`. Утверждения: таймлайн §14 (06:15–07:15) воспроизводится; донесение с доставкой после конца отрезка остаётся в пути; `TurnResult` на 07:15 не включает недоставленные сообщения; контакт планирует `CombatTick`; при отсутствии ответа в окне есть `QuerySilence`; `OrderLost` не логируется/не отображается как доставка. Дополнительно убедиться, что in-transit/отложенные события и `PendingCasualties` обрабатываются корректно на границе отрезка.
-- **Критерий прохождения:** интеграционный регресс §14 и семантика событий подтверждены, общие тесты зелёные.
+## Карточки задач
 
-### Wave 3 — сценарий проверок волны
-- **Общие проверки работоспособности:** `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx` (успех). Перед финалом волны/`T-23` — smoke запуск консольного приложения.
-- **Проверки добавленных/изменённых механик (дублировать из задач):**
-  - `T-21a` (конструктор приказов): дублировать `Как проверить` T-21a — ручной сценарий CLI: задать все 7 слотов, ограничение из закрытого списка, до 3 ветвей, режим, оба дедлайна/срок донесения; 4-я ветвь отклоняется. Утверждения: приказ содержит `TargetObjectId`/`TargetUnitId`/`MovementMode`/`Constraints`/`Branches`/сроки; UI не раскрывает истину.
-  - `T-21b` (запросы): дублировать `Как проверить` T-21b — ручной сценарий: запрос формирует отправку, при ответе донесение с 4 полями (минута события, минута доставки, источник, уверенность), при отсутствии ответа — `QuerySilence`. Утверждения: использует курьерный механизм/очередь; `QuerySilence` не интерпретируется как «факта нет».
-  - `T-21c` (карта знания): дублировать `Как проверить` T-21c — сценарий: без наблюдений «нет данных», после донесения о пустоте «пусто»; конфликт — обе версии и сниженная уверенность. Утверждения: нет чтения `PresentUnitIds`, отображаются оба времени и уверенность 0–3.
-  - `T-21d` (журнал): дублировать `Как проверить` T-21d — сценарий: ETA/фактические минуты, очередь/статусы курьеров; `QuerySilence` видим; потеря на обратном пути не показывается как «приказ потерян/не доставлен»; потерянные приказы не отображаются как `OrderDelivered`.
-  - `T-21e` (обстановка/донесения): дублировать `Как проверить` T-21e — сценарий: донесения с источником, обеими минутами, уверенностью и возрастом; конфликты как противоречие; `Impossible` и ответы на запросы различимы; нет обращения к скрытой истине.
-  - `T-22` (shell/DI/integration): дублировать `Как проверить` T-22 — `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; ручной запуск: меню содержит 9 действий, `ЗАГРУЗИТЬ/СОХРАНИТЬ` работают, `UseLlm` on/off не ломает запуск. Утверждения: DI резолвит `Arbiter`, команды, persistence, narrator/factory; `slnx`/проекты актуальны.
-- **`T-23` (финальная cleanup/docs, механики не добавлялись/не менялись):** достаточно проверки факта сборки и запуска по `Как проверить` T-23 — `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx`; проверки отсутствия `Transmition*`, `Kriegsspiel.Core/Reports`, `Assesment`, чистоты `Kriegsspiel.Core.csproj`, актуальности `readme.md`/`.gitignore` и неизменности `AGENTS.md`/правил.
-- **Критерий прохождения:** общие команды и дублированные проверки/ручные сценарии T-21a–T-22, затем T-23 подтверждены; приложение собирается и запускается.
-
-
-### Wave 4 — FS-005 (большие карты, консоль), сценарий проверок волны
-- **Источник требований:** `docs/gameDocs/featureSpecs/FS-005-large-maps-console-display.md` (status: ready_for_decomposition), `docs/gameDocs/rules.md §1, §3, §4, §6, §12`, `docs/gameDocs/featureBacklog.md` #5. **Учтённый техдолг:** активных `open`/`planned` записей в `docs/projectDocs/tech-debt.md` нет (актуально на момент декомпозиции и синхронизации).
-- **База синхронизации плана:** `master` @ `8168b08` (включает `3546794` и `Content/scenarios/river_line_10x10.json`, 100 зон); при переносе плана конфликтов в `todo.md` не было. Сценарий `river_line_10x10` доступен в базе и используется только для чтения/проверок, не входит в ownership задач.
-- **Launch-план (параллельность/порядок/refs):** G1=`T-24`, G2=`T-25` — без пересечений ownership, запуск параллельно после `gate_passed`. Per-task: реализация/проверки `implementer` в ветке задачи → `verifier` per-task → merge MR в ветку волны после `verified` (или `ready to merge` при отсутствии прав) в любом порядке. Wave-gate на ветке волны после merge G1+G2 по сценарию ниже и refs `Как проверить` `T-24`/`T-25`.
-- **Общие проверки работоспособности:** выполнять на ветке волны после merge всех задач волны. `dotnet build Kriegsspiel.slnx` (успех, 0 ошибок); `dotnet test Kriegsspiel.slnx` (все тесты зелёные, без регрессий). В окружении без `dotnet` — зафиксировать ограничение с доказательствами (не считать прогон успешным).
-- **Проверки добавленных/изменённых механик (дублировать из задач):**
-  - `T-24` (масштабируемое отображение карты-знания): дублировать `Как проверить` T-24 — build + `dotnet test Kriegsspiel.slnx` + ручные проверки UI. Утверждения: компактный обзор по умолчанию и навигация обзор↔деталь/фокус; для выбранной зоны показаны соседи и характеристики связей (тип ребра road/offroad/crossing и/или время перехода) и обязательные элементы знания §6 (состояние `нет данных`/`пусто`/`занято`, кем по донесениям в пределах знания, уверенность, время события и доставки/обновления, противоречия/версии — обе версии не скрываются); доступны фильтр/поиск/сводка (сужение) и возврат к обзору; подразделения в контексте карты масштабируются (сводка/группировка/фильтрация), собственные силы соотносимы с известным положением/контекстом, противник — только знание/донесения без раскрытия скрытой истины; в файлах владельца нет чтения `Zone.PresentUnitIds` как источника знания.
-  - `T-25` (demo-контент увеличенного масштаба): дублировать `Как проверить` T-25 — build + `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter Fs005ScaleContentTests` (или `dotnet test Kriegsspiel.slnx`). Утверждения: `Content/scenarios/fs005_scale_demo.json` загружается через `ContentLoader` с каноническими `Content/friction.json` и `Content/reports.json`; масштаб соответствует ориентиру FS-005 (>=30 зон и/или >=30 подразделений суммарно); ссылки/рёбра валидны.
-- **Проверка на масштабе (обязательная для wave-gate):** `dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj -- --Scenario fs005_scale_demo` (или эквивалентная передача `Scenario=fs005_scale_demo`) и/или `dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj -- --Scenario river_line_10x10` (уже в базе, 100 зон, seed 4242), открыть `КАРТА`. Утверждения: при увеличенном объёме вывод по умолчанию читаем/обозрим (сводка/ограничение деталей, без единственного перегруженного полотна), доступны обзор↔деталь/фокус и сужение выборки, топология и элементы §6 сохраняются, отображение юнитов соблюдает туман войны (противник только как знание), собственные силы соотносимы с картой.
-- **Критерий прохождения:** общие команды и проверки `T-24`–`T-25` подтверждены, ручная проверка на `fs005_scale_demo` и/или `river_line_10x10` и регрессия на существующих сценариях (`test_01`/`crossing_01`/`river_line_10x10`) зафиксированы в `docs/projectDocs/reports/wave-4-report.md`.
-
-
-## Wave 0 — фундамент
-
-### T-01 — Domain and contracts
-- **ID:** `T-01`
-- **Волна:** Wave 0
-- **Покрывает:** §2–§12 (юниты/командиры/зоны/объекты/груз/маскировка, приказ и эффективный приказ, донесение и знание, события, состояние игры, боеспособность), трассы K/B/D.
+### T-30 — MVP: домен, контракты, граф
+- **ID:** `T-30`
+- **Волна:** Wave 5
+- **Покрывает:** `docs/gameDocs/rules.md §1, §2, §3, §4, §5, §6, §7` (доменные типы, состояние, события, контракты, детерминированный граф); трассы K/B/D — в типах знания/донесений/курьеров.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Domain/Unit.cs`
-  - `Kriegsspiel.Core/Domain/Zone.cs`
-  - `Kriegsspiel.Core/Domain/CommanderTraits.cs`
-  - `Kriegsspiel.Core/Domain/Order.cs`
-  - `Kriegsspiel.Core/Domain/Report.cs`
-  - `Kriegsspiel.Core/Domain/PlayerKnowledge.cs`
-  - `Kriegsspiel.Core/Domain/GameEvent.cs`
-  - `Kriegsspiel.Core/Domain/GameState.cs`
-  - `Kriegsspiel.Core/Domain/ZoneObject.cs` (новый)
-  - `Kriegsspiel.Core/Domain/MovableObject.cs` (новый)
-  - `Kriegsspiel.Core/Domain/CivilianGroup.cs` (новый)
-  - `Kriegsspiel.Core/Domain/EffectiveOrder.cs` (новый)
-  - `Kriegsspiel.Core/Domain/Courier.cs` (новый)
-  - `Kriegsspiel.Core/Domain/Cargo.cs` (новый)
-  - `Kriegsspiel.Core/Domain/ContactGeometry.cs` (новый)
-  - `Kriegsspiel.Core/Domain/PendingCasualty.cs` (новый)
-  - `Kriegsspiel.Core/Contracts/IReportFactory.cs` (новый)
-  - `Kriegsspiel.Core/Contracts/IKnowledgeUpdater.cs` (новый)
-  - `Kriegsspiel.Core/Contracts/IRandomSource.cs` (новый)
-  - `Kriegsspiel.Core/Contracts/IGameRules.cs` (новый)
-  - `Kriegsspiel.Core.Tests/DomainInvariantsTests.cs` (новый)
-  - Не трогать другие файлы.
+  - `Kriegsspiel.Core/Mvp/Domain/Side.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Posture.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/CommanderTraits.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/UnitLocation.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Edge.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Zone.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Unit.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/OrderIntent.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/OrderStatus.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Order.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/EffectiveOrder.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/ReportKind.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Report.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/GameEvent.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/GameState.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/Courier.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/ReportLog.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/IMvpClock.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Domain/MvpRules.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Graph/GraphPath.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpRandomSource.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpReportFactory.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpTransmissionResolver.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpOrderInterpreter.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpExecutionResolver.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpCombatResolver.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpReconResolver.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Contracts/IMvpObjectiveEvaluator.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpDomainTests.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpGraphPathTests.cs` (новый)
+  - Не трогать другие файлы (legacy `Kriegsspiel.Core/Domain/*`, `Contracts/*`, `Arbitration/*` не менять).
 - **Зависимости:** нет.
 - **Что сделать:**
-  1. Ввести явную сторону `Faction` (замена convention `ENEMY_`) и использовать её в доменных моделях (`Unit`, знание/отчёты/события где применимо) как источник истины для принадлежности; не менять логику resolver/CLI вне этих файлов.
-  2. Расширить `CommanderTraits` до 5 параметров: `Initiative`, `Caution`, `Literalism`, `ReportHonesty`, `Professionalism` (0–3).
-  3. Расширить `Unit`: `Training`, `Experience`, `CommandLossResilient`, `Concealed`, `AttentionEdgeId`, `MoveEdgeId`, `GuardOfObjectId`, `Captured`, `NoPrisonersPolicy`, ссылка на эффективный приказ (`CurrentOrderId`/эквивалент указывает на `EffectiveOrder`), поля/флаги нужные для `CombatEffective` и состояния под плохим управлением; сохранить совместимость с текущими базовыми боевыми полями.
-  4. Зафиксировать доменное определение `CombatEffective` (§7, §11): `Strength >= 0.4 * InitialStrengthSnapshot && Morale >= 30 && Readiness >= 20 && Ammo > 0` (метод/функция/свойство в домене, пригодное для переиспользования).
-  5. Расширить `Zone`: типы рёбер (`EdgeType`: Road/Offroad/Crossing), поддержка объектов зоны/груза/контроля (`ZoneObject`, `Cargo`, `ControllingFaction`), укрытие/наблюдаемость и связанные с картой данные; выделить `ZoneObject` (bridge/fortification/observationPost/depot, состояние/целостность) в отдельный тип.
-  6. Добавить новые доменные типы: `MovableObject`, `CivilianGroup`, `EffectiveOrder`, `Courier` (состояния и плечи/ETA-данные, необходимые для пула), `Cargo` (owner/количество/тип), `ContactGeometry` (front/flank/rear и данные векторов/рёбер), `PendingCasualty` (minute, unitId, amount/поля тика).
-  7. Переработать `Order`: 7 слотов конструктора + `orderVersion`, ветви (`Branches`, ≤3), `MovementMode`, `Constraint` как enum (закрытый список), `TargetObjectId`, `TargetUnitId`, дедлайны/срок донесения, поля исходного текста/метаданных; сохранить исходный приказ как журналируемую сущность отдельно от `EffectiveOrder`.
-  8. Переработать `Report`: 4 обязательных поля (минута события, минута доставки, источник, уверенность 0–3) + тип/факты/текст/`fact key` или эквивалентные поля, необходимые для K/B/D-потока; поддержать `ReportKind.Impossible` и совместимые виды донесений.
-  9. Переработать `PlayerKnowledge`: только знание игрока (не истина), отсутствие данных vs пусто, два timestamp (событие/доставка-обновление), уверенность 0–3, хранение обеих версий при противоречии и правило снижения уверенности.
-  10. Расширить `GameEvent` новыми типами событий: `QuerySent`, `QueryAnswered`, `QuerySilence`, `EdgeDestroyed`, `CamouflageRevealed`, `GuardRelieved`, `PendingCasualties`, `ReportDelivered`, `OrderSuperseded`, `OrderMisinterpreted`, `CombatTick` (сохранить/адаптировать существующие события без потери семантики).
-  11. Расширить `GameState`: `InTransitReports`, `CourierPool`, `Seed`/состояние RNG, `PendingCasualties`, журнал/очереди и данные знаний, необходимые для детерминизма и сохранения; не реализовывать резолверы/сериализацию вне контрактов.
-  12. Объявить контракты в `Kriegsspiel.Core/Contracts`: `IReportFactory`, `IKnowledgeUpdater`, `IRandomSource`, `IGameRules` (минимально достаточные сигнатуры для параллельной работы Wave 1: создание донесений/обновление знания/детерминированный RNG/правила-параметры и проверки).
-  13. Добавить `DomainInvariantsTests.cs`: проверки инвариантов домена (например, `CombatEffective`, границы уверенности 0–3, наличие 4 полей донесения, запрет отрицательных ключевых значений, корректность enum/версий приказов, различие no-data/empty в знании).
+  1. Описать домен строго по §3: `Side` (Player/Enemy), `Posture` (March/Attack/Defense), `CommanderTraits` (Init/Pedantry/Honesty 0..3), `Unit` (Id, Side, InitialStrength, Strength, Readiness 0..100, Ammo>=0, `UnitLocation`, EffectiveOrder, PendingOrder, LastMovedMinute/LastFoughtMinute, IsCombatEffective = Strength >= 0.30*InitialStrength). Никаких morale/fatigue/training/experience/contact geometry/capture.
+  2. `UnitLocation` — node `{ ZoneId }` или edge `{ EdgeId, FromZoneId, ToZoneId, RemainingMinutes, EdgeType }`; edge-локация создаётся при движении; `PendingOrder` — единичный буфер, новый приказ перезаписывает.
+  3. `Order` — Id, UnitId, Intent (Move/Hold/Recon), TargetZoneId?, Deadline?, ForbiddenZoneId?, CreatedMinute, SentMinute?, DeliverAt?, AmbiguityA, Status (Executed/Distorted/FailedRejected). `EffectiveOrder` — источник, intent, target, deadline, forbidden, статус/примечание. Никаких 7 слотов/ветвей/ограничений/режимов движения.
+  4. `Report` — Kind (Arrival, Contact, ReconResult, ImpossibleOrder, ClarificationRequest, QueryReply), EventMinute, DeliveryMinute, SourceUnitId, Confidence 1..3, ObservedZoneId?, ReportedOwnStrength?, ReportedEnemyStrength?, Text?. Без `fact key`-слияния.
+  5. `GameState` — ScenarioId, `IMvpClock` (интерфейс в T-30, реализация — T-31), Zones, Edges, Units, Orders, Couriers, InTransitReports, DeliveredReports, `ReportLog`, EventLog, Seed/RngState, EndMinute, HqZoneId. `IMvpClock` объявляет `Now`, `PendingCount`, `Schedule`, `AdvanceTo`; это разрывает циклическую зависимость T-30↔T-31.
+  6. `ReportLog` — append-only индекс доставленных донесений по зоне/юниту; хранит все версии и не меняет confidence/не сливает.
+  7. `GameEvent` — полный набор событий §2–§7: OrderIssued/Dispatched/Delivered/Lost/Interpreted/Impossible/ClarificationRequested, UnitEnteredEdge/Arrived, Contact, ReconResult, CombatTick, UnitDestroyed, UnitRetreated, ReportCreated/Lost/Delivered, CourierSent/Lost/Returned, QueryCreated/QueryReplyCreated, SilenceDetected, RestApplied, VictoryEvaluated. События — `record`-наследники.
+  8. `MvpRules` — константы канона (0.30; 0.25; posture 0.5/1.0/1.3; terrain 0.1; ammo 0.5; p_detect 0.25/0.15/0.10/0.95; A 0.70/0.15; P 0.03/0.90; trait 0.15/0.10; T_leg min 5; reply +15; courier lost +30/+60; recon window 30; honesty 0.12 и т.д.).
+  9. `GraphPath` — Дейкстра по `travelTime` (вес: travelTime при deadline != null; travelTime*(offroad?0.8:1.0) при deadline == null), обработка `forbiddenZone` (в т.ч. start-зона: выход разрешён, возврат запрещён), Дейкстра по `courierTime` с минимумом 5. Без механик.
+  10. Контракты `IMvp*` — минимально достаточные сигнатуры для параллельных Wave 6 (transmission, order interpreter, execution, combat, recon, objective, report factory, random). Реализаций в T-30 нет.
+  11. Тесты: инварианты домена, границы confidence, no-data vs empty не как механика слияния, граф/forbidden/T_leg.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter DomainInvariantsTests`
-  - Утверждения: `CombatEffective` возвращает `false` при нарушении любого порога; `Report`/DTO-поля требуют event minute, delivery minute, source, confidence; `PlayerKnowledge` различает «нет данных» и «пусто»; `Order` хранит `orderVersion` и исходные ветви; `GameState` содержит `InTransitReports`, `CourierPool`, `Seed`/RNG state, `PendingCasualties`.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpDomainTests|MvpGraphPathTests"`
+  - Утверждения: `IsCombatEffective` false при `strength < 0.30*initial`, true при равенстве; edge-локация хранит remainingMinutes; один pendingOrder; Order/Report/GameEvent соответствуют §3–§7; Dijkstra даёт ожидаемые маршруты/времена; forbidden start-зона запрещает возврат; T_leg min 5.
 - **Готово, если:**
-  - [x] Все перечисленные доменные/контрактные файлы созданы или обновлены в рамках ownership.
-  - [x] Новые типы/поля/события из §2–§12 представлены в домене и компилируются.
-  - [x] Контракты Wave 1 объявлены и не требуют правок `Arbiter`/CLI.
-  - [x] `DomainInvariantsTests` добавлен и покрывает ключевые инварианты.
+  - [ ] Все перечисленные Mvp-файлы созданы; legacy-файлы не изменены.
+  - [ ] Домен содержит только канонические поля/состояния, без extended-механик.
+  - [ ] `GraphPath` реализует оба режима веса и forbidden-правила.
+  - [ ] Контракты Wave 6 объявлены; реализаций нет.
+  - [ ] `MvpDomainTests`/`MvpGraphPathTests` зелёные; полный legacy-build не сломан.
 
-### T-02 — Clock and event ordering
-- **ID:** `T-02`
-- **Волна:** Wave 0
-- **Покрывает:** §3 (порядок событий внутри отрезка, очередь/время), трасса D.
+### T-31 — MVP: детерминированные часы и PRNG
+- **ID:** `T-31`
+- **Волна:** Wave 5
+- **Покрывает:** `rules.md §1 п.6, §2` (детерминизм, 1-минутный тик, порядок событий); трасса D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Domain/Clock.cs`
-  - `Kriegsspiel.Core.Tests/ClockTests.cs`
+  - `Kriegsspiel.Core/Mvp/Domain/MvpClock.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Random/MvpRandom.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpClockTests.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpRandomTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** нет.
+- **Зависимости:** `T-30`; реализация `IMvpClock`/`IMvpRandomSource`.
 - **Что сделать:**
-  1. Заменить ключ планирования с `int` на детерминированный ключ `(minute, phase, sequence)`; определить фазы минимум: `Delivery`, `Understanding`, `Movement`, `Combat`, `ReportCreate`, `ReportDeliver`, `Scheduled` (значения/порядок стабильны и документированы в коде типа/enum).
-  2. Изменить `Schedule` так, чтобы попытка планирования в прошлое (`at < Now` по минуте/фазе) приводила к явной ошибке (исключение) либо требовала отдельного явного API; не выполнять тихий перенос в `Now`.
-  3. Гарантировать `AdvanceTo(target)` работает при `target >= Now`, возвращает события в стабильном порядке `(minute, phase, sequence)` и корректно продвигает `Now`.
-  4. Добавить `PendingCount` (и при необходимости безопасный просмотр/состояние очереди без мутации), чтобы тесты и интеграция могли проверять отложенные события.
-  5. Обновить `ClockTests`: порядок при совпадении минут, запрет прошлого, `AdvanceTo` в будущее/на текущее время, учёт sequence, `PendingCount`.
+  1. `MvpClock` реализует `IMvpClock` из T-30: `Now`, `PendingCount`, `Schedule(event, minute, phase)`; ключ `(minute, phase, sequence)`; фазы `Dispatch`, `Delivery`, `Movement`, `Combat`, `ReportDelivery`, `Scheduled`; стабильный порядок; запрет планирования в прошлое; `AdvanceTo(target)`; безопасный просмотр очереди.
+  2. Не реализовывать 30-минутную командную паузу в часах — это уровень `MvpArbiter` (T-40); часы дают детерминированный порядок 1-минутных событий.
+  3. `MvpRandom`: явный детерминированный PRNG (например, PCG/xorshift, не `System.Random`), `Seed`, `State`, `NextDouble`, `NextInt`, `Chance`, `Restore`; одинаковая последовательность при одинаковом seed/state.
+  4. Тесты: порядок фаз/минут/sequence, запрет прошлого, `PendingCount`, повторный seed, restore, независимость от глобального состояния.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ClockTests`
-  - Утверждения: события с одинаковой минутой выдаются по фазам `Delivery→Understanding→Movement→Combat→ReportCreate→ReportDeliver→Scheduled`; `Schedule` в прошлое бросает ожидаемое исключение; `AdvanceTo(Now)` не теряет события `Now`; `PendingCount` уменьшается при извлечении.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpClockTests|MvpRandomTests"`
+  - Утверждения: события с одинаковой минутой идут по фазам; sequence сохраняет порядок; `Schedule` в прошлое бросает исключение; `AdvanceTo` не теряет события; `Restore` продолжает ту же последовательность.
 - **Готово, если:**
-  - [x] `Clock` использует `(minute, phase, sequence)` и стабильный порядок.
-  - [x] Планирование в прошлое не маскируется silent-clamp.
-  - [x] `ClockTests` покрывают порядок, прошлое и `PendingCount`.
+  - [ ] Часы детерминированы и не имеют silent-clamp в прошлое.
+  - [ ] PRNG воспроизводим и восстанавливаем.
+  - [ ] Тесты часов/RNG покрывают порядок, прошлое, restore.
+  - [ ] Legacy `Clock`/`Random` не изменены.
 
-### T-03 — Content profile and validation
-- **ID:** `T-03`
-- **Волна:** Wave 0
-- **Покрывает:** §2, §4, §5, §6, §7, §9–§12 (параметры профиля/сценария, шаблоны донесений, цели и валидация).
+### T-32 — MVP: контент-адаптер и валидация
+- **ID:** `T-32`
+- **Волна:** Wave 5
+- **Покрывает:** `rules.md §1, §2` (ScenarioConfig, граф, курьеры, юниты, цели, seed), трасса D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Content/ContentLoader.cs`
-  - `Kriegsspiel.Core/Content/Scenario.cs`
-  - `Kriegsspiel.Core/Content/ScenarioBundle.cs`
-  - `Kriegsspiel.Core/Content/Objective.cs`
-  - `Kriegsspiel.Core/Content/FrictionTable.cs`
-  - `Kriegsspiel.Core/Content/ReportTemplates.cs`
-  - `Content/friction.json`
-  - `Content/reports.json`
-  - `Content/scenarios/crossing_01.json`
+  - `Kriegsspiel.Core/Mvp/Content/MvpScenario.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Content/MvpContentLoader.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Content/MvpScenarioFactory.cs` (новый)
   - `Content/scenarios/test_01.json`
-  - `Kriegsspiel.Core.Tests/Fixtures/TestContent.cs`
-  - `Kriegsspiel.Core.Tests/ContentLoaderTests.cs` (новый)
+  - `Content/scenarios/crossing_01.json`
+  - `Kriegsspiel.Core.Tests/Mvp/MvpContentLoaderTests.cs` (новый)
+  - Не трогать другие файлы (legacy `ContentLoader.cs`, `Scenario.cs`, `FrictionTable.cs`, `Content/friction.json`, `Content/reports.json`, `fs005_scale_demo.json`, `river_line_10x10.json` не менять).
+- **Зависимости:** `T-30`, `T-31` (для `MvpScenarioFactory`/`MvpClock`).
+- **Что сделать:**
+  1. `MvpScenario`: Id, Name, StartMinute, EndMinute (кратен 30), Seed, HqZoneId, CourierPool {Count>=1, CourierLoss [0,1], ReportLoss [0,1]}, Zones (Id, Name?, DefenseBonus 0..2, Observability 1..3, Edges), Units (Id, Side, InitialStrength>0, Readiness 0..100, Ammo>=0, LocationZoneId, Commander Init/Pedantry/Honesty 0..3), TargetZones (ZoneId, Weight>=0, хотя бы один), WinThreshold (0,1).
+  2. `MvpContentLoader` читает те же JSON; MVP-поля `hqZone`, `courierPool`, `targetZones`, `courierTimes` (если нет — для legacy-сценариев допустим документированный fallback `courierTime=travelTime`; для `mvp_01` обязательны явно). Маппинг legacy: `faction` Blue→Player, Red→Enemy; `type=HQ` не создаёт боевой unit, а задаёт `HqZoneId`; `posture` Reserve/Defend→Defense, March→March; `initialStrength` = `initialStrengthSnapshot` ?? `strength`; traits: Initiative→Init, Literalism→Pedantry, ReportHonesty→Honesty.
+  3. Валидация §1–§2: связный граф, hq/targets существуют, endMinute кратен 30, K>=1, вероятности [0,1], defenseBonus/observability, travelTime/courierTime>0, симметричные рёбра, уникальные id, seed обязателен, readiness/ammo/traits, initialStrength>0, нет параллельных рёбер (low-наблюдение r6).
+  4. Аддитивно добавить MVP-поля в `test_01.json` и `crossing_01.json`: `hqZone` (START/B2), `courierPool` (2/0.05/0.03), `targetZones` (OBJ 1.0 / B3 1.0), `courierTimes` для рёбер. Legacy-загрузчик должен продолжать загружать эти файлы (неизвестные поля игнорируются).
+  5. `MvpScenarioFactory` строит `MvpGameState`, валидирует стартовые локации (все в узлах; posture defense по умолчанию), заполняет Zones/Edges/Units/TargetZones/EndMinute/HqZoneId/Seed.
+  6. Тесты: позитивная загрузка test_01/crossing_01; негативные кейсы на каждую валидацию; legacy `ContentLoaderTests` остаются зелёными.
+- **Как проверить:**
+  - `dotnet build Kriegsspiel.slnx`
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpContentLoaderTests|ContentLoaderTests"`
+  - Утверждения: test_01/crossing_01 загружаются MVP-загрузчиком; hq/targets/курьеры/рёбра корректны; негативные кейсы бросают `ContentValidationException`; legacy-тесты зелёные.
+- **Готово, если:**
+  - [ ] MVP-схема покрывает §1–§2 и валидируется.
+  - [ ] test_01/crossing_01 дополнены аддитивно; legacy-загрузка не сломана.
+  - [ ] `MvpScenarioFactory` создаёт валидное начальное состояние.
+  - [ ] Позитивные/негативные Mvp-тесты зелёные.
+  - [ ] Legacy content-файлы/загрузчик вне ownership не изменены.
+
+### T-33 — MVP: донесения, append-only лог и доставка
+- **ID:** `T-33`
+- **Волна:** Wave 5
+- **Покрывает:** `rules.md §4` (обратное плечо), `§6` (структура/confidence/потеря/доставка донесений); трассы K/D.
+- **Владеет файлами:**
+  - `Kriegsspiel.Core/Mvp/Reporting/MvpReportFactory.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Reporting/MvpReportLog.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Reporting/MvpReportDelivery.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpReportTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** нет.
+- **Зависимости:** `T-30`, `T-31`.
 - **Что сделать:**
-  1. Расширить `FrictionTable`/модели контента до параметров §12: вероятности/веса/времена, курьеры, `P0/Pmin/Pmax`, веса A, режимы передвижения, lethality/morale/capture/civilians/supply/recon, модификаторы и профили сложности (только данные/схема/валидация в рамках этих файлов).
-  2. Расширить модели `Scenario`/`Objective`/`ScenarioBundle`: типы рёбер, объекты зон, цели всех поддерживаемых типов с контрольными минутами и весами (сумма весов = 1), пороги/состояния контроля и стартовые параметры, необходимые правилам.
-  3. Обновить `ContentLoader` строгой валидацией: вероятности ∈ [0,1], суммы весов = 1 где требуется, `couriers >= 1`, уникальность id зон/юнитов/объектов, согласованность/симметричность рёбер, валидные перечисления, положительные времена (`deliveryTime`/`returnTime` > 0), неотрицательные коэффициенты.
-  4. Обновить `ReportTemplates` и `Content/reports.json`: поддержка placeholder-полей для фактов донесений (время события/доставки, источник, уверенность, тип, зона/юнит/числа) без привязки к UI.
-  5. Обновить JSON-контент (`friction.json`, `scenarios/*.json`, `reports.json`) под новую схему и валидные тестовые данные; обновить `TestContent` как каноничную fixture для тестов ядра.
-  6. Добавить `ContentLoaderTests`: позитивная загрузка валидного контента и негативные кейсы на каждую ключевую валидацию (вероятность вне диапазона, сумма весов != 1, дубли id, битое ребро, 0 курьеров, невалидный enum/время).
+  1. `MvpReportFactory`: создать Report с обязательными полями; confidence по §6 (3 для Arrival/Impossible/Clarification, 2 для Contact/QueryReply по текущему узлу, 1 для Recon fail/QueryReply о соседнем узле); `ReportedOwnStrength = null` для ReconResult; для остальных — strength * (1+(3-honesty)*0.12) при honesty<3; `ReportedEnemyStrength` = 0 при отсутствии/провале, иначе сумма enemy strength в ObservedZoneId * (1-(3-honesty)*0.12).
+  2. `MvpReportLog`: append-only; хранит все доставленные Report по зоне/юниту; версии не сливаются, confidence не пересчитывается; no-data vs empty — по наличию/значению донесения, без отдельной механики слияния.
+  3. `MvpReportDelivery`: при триггере `rand()<p_report_loss` → ReportLost, донесение не доставляется; иначе DeliveryMinute = EventMinute + T_leg_back (`GraphPath` от текущего узла юнита; на ребре — от `ToZoneId`; min 5); фиксация T_leg_back на событие; планирование `ReportDelivered` в `MvpClock`.
+  4. Не использовать пул курьеров штаба для Report (только собственные вестовые); пул — T-34.
+  5. Тесты: confidence/поля, honesty-искажение, ReconResult ownStrength null, отсутствие слияния версий, потеря/доставка, T_leg_back min 5, in-transit.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ContentLoaderTests`
-  - Утверждения: валидные `Content/*.json` и `TestContent` загружаются без ошибок; загрузка с вероятностью `> 1`, суммой весов целей `!= 1`, `couriers == 0`, дублирующим id или несимметричным/несуществующим ребром завершается контролируемой ошибкой валидации.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpReportTests`
+  - Утверждения: обязательные поля/границы confidence; `ReconResult.ReportedOwnStrength == null`; honesty<3 искажает strength вверх и enemy strength вниз; лог хранит обе версии без снижения confidence; ReportLost при срабатывании; deliveryMinute = eventMinute + T_leg_back.
 - **Готово, если:**
-  - [x] Схема контента покрывает параметры §12 в пределах файлов владельца.
-  - [x] `ContentLoader` валидирует обязательные инварианты профиля/сценария.
-  - [x] Сценарии/шаблоны/fixture обновлены и проходят тесты загрузки.
+  - [ ] Фабрика донесений соответствует §6.
+  - [ ] Лог append-only, без слияния/приоритизации.
+  - [ ] Доставка/потеря/T_leg_back реализованы и тестированы.
+  - [ ] Пул курьеров не используется для Report.
+  - [ ] Legacy `IReportNarrator`/`ReportFactory` не изменены.
 
-> Проверки сборки и тестов выполнены после установки .NET 10.0.404: `dotnet build Kriegsspiel.slnx` — 0 предупреждений/0 ошибок; `dotnet test Kriegsspiel.slnx --no-build` — Passed 46, Failed 0. Итоги — `docs/projectDocs/reports/wave-0-report.md`.
-
-## Wave 1 — механики ядра
-
-### T-10 — Couriers and transmission
-- **ID:** `T-10`
-- **Волна:** Wave 1
-- **Покрывает:** §3 (курьеры, очередь, подтверждение доставки), §5 стадия 1, трасса D.
+### T-34 — MVP: курьеры, отправка, запросы, тишина
+- **ID:** `T-34`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §2 шаг 1, §4`; трасса D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Arbitration/ITransmitionResolvers.cs`
-  - `Kriegsspiel.Core/Arbitration/TransmitionResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/CourierPool.cs` (новый)
-  - `Kriegsspiel.Core.Tests/TransmitionResolverTests.cs`
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpCourierPool.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpTransmissionResolver.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpTransmissionTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31`, `T-33`; реализация `IMvpTransmissionResolver`.
 - **Что сделать:**
-  1. Реализовать модель/логику пула курьеров в `CourierPool`: состояния free → outbound → return → returned/lost, отдельные шансы потери на плечо, замена через 60 минут после расчётного времени возврата, FIFO-очередь, немедленная отправка при освобождении, приоритет запросов над приказами.
-  2. Интегрировать `CourierPool` в `TransmitionResolver` (и интерфейс при необходимости сигнатур): расчёт/фиксация `deliveryTime`/`returnTime` (>0), ETA отправки/доставки/возврата, `deliveryConfirmed=false` при потере на обратном пути, доставка приказа не отменяется потерей обратного плеча.
-  3. Поддержать повтор/обработку запроса как сообщение, использующее курьера (совместимо с контрактами/событиями T-01), без изменения `Arbiter` и CLI.
-  4. Обновить `TransmitionResolverTests`: пример из §14 (06:15 выдан → доставка 06:45 при deliveryTime=30, возврат по ETA), очередь FIFO, приоритет запроса, потеря туда/обратно, замена через 60 минут, ETA пересчитывается от фактической отправки.
+  1. Пул штаба: K курьеров; состояния free/outbound/return/lost; очередь Order/Query; приоритет Query выше Order, далее FIFO по `createdMinute`; отправка при свободном курьере в тик `t`, `sentMinute=t`.
+  2. `T_leg` — Дейкстра по `courierTime` от hqZone до узла юнита (на ребре — до `ToZoneId`), минимум 5; `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; ETA пересчитывается от фактической отправки.
+  3. Потеря курьера: в `sentMinute` `rand()<p_courier_loss` → `CourierLost`, `deliverAt=null`, возврат `sentMinute+2*T_leg+60`; приказ/запрос не доставляется.
+  4. Query: в `deliverAt` живой юнит формирует `QueryReply` (событие/Report через T-33); `deliveryMinute=deliverAt+T_leg_back` (если не потеряно донесение); `expectedReplyAt=deliverAt+T_leg_back+15`; если ответа нет — `SilenceDetected(unitId,minute)`; при потере курьера — `sentMinute+2*T_leg+30`.
+  5. Тесты: FIFO/приоритет, занятые курьеры, ETA от фактической отправки, потеря/возврат, query reply/silence, min 5.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter TransmitionResolverTests`
-  - Утверждения: при занятых курьерах сообщение ставится в очередь и получает ETA от фактической отправки; запрос отправляется раньше приказа при одинаковом времени постановки в очередь; потеря на обратном пути не создаёт «приказ не доставлен», но оставляет `deliveryConfirmed=false`; замена курьера доступна через 60 мин после расчётного возврата.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpTransmissionTests`
+  - Утверждения: Query уходит раньше Order при равном времени; FIFO; `deliverAt`/`returnAt` по §4; потеря курьера не создаёт доставку; `SilenceDetected` в ожидаемом окне; T_leg >= 5.
 - **Готово, если:**
-  - [ ] `CourierPool` и resolver реализуют состояния, приоритеты, потери по плечам и замену.
-  - [ ] Пример 06:15→06:45 воспроизводится в тестах.
-  - [ ] Тесты transmission покрывают FIFO, приоритет, потери и ETA.
+  - [ ] Пул и резолвер реализуют §4.
+  - [ ] Query/Reply/Silence и потеря курьера покрыты тестами.
+  - [ ] ETA пересчитывается от фактической отправки.
+  - [ ] Report-доставка не занимает пул штаба.
 
-### T-11 — Orders ambiguity/understanding
-- **ID:** `T-11`
-- **Волна:** Wave 1
-- **Покрывает:** §4 (конструктор, неоднозначность A, формула P, конфликты, ветви, искажения), §5 стадия 2, трасса D.
+### T-35 — MVP: интерпретация приказа (A/P, forbidden, искажение, deadline)
+- **ID:** `T-35`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §3` (pendingOrder), `§5`; трасса D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Orders/AmbiguityScorer.cs`
-  - `Kriegsspiel.Core/Orders/Misinterpretation.cs`
-  - `Kriegsspiel.Core/Orders/ConflictResolver.cs` (новый)
-  - `Kriegsspiel.Core/Orders/OrderBranch.cs` (новый)
-  - `Kriegsspiel.Core/Arbitration/IUnderstandingResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/UnderstandingResolver.cs`
-  - `Kriegsspiel.Core.Tests/AmbiguityScorerTests.cs`
-  - `Kriegsspiel.Core.Tests/UnderstandingResolverTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Orders/MvpAmbiguityScorer.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Orders/MvpOrderInterpreter.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpOrderInterpreterTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31`; реализация `IMvpOrderInterpreter`.
 - **Что сделать:**
-  1. Переписать `AmbiguityScorer` по §4: нет цели (для намерений, где обязательна) +0.7, расплывчатость +0.25, нет дедлайна +0.1, нет срока донесения +0.1, каждая ветвь +0.05, `clamp(0,1)`; пустой `Куда` для `Hold` даёт 0, для `Reserve` — подстановка зоны резерва сценария (через контекст/правила), для прочих — вклад «нет цели».
-  2. Реализовать `ConflictResolver` (детерминированно до roll P): доминирующая пара черт, лестница «запрос → буквальное исполнение → собственная оценка/инициатива», сокрытие нарушения при честности ≤1, формирование непротиворечивого эффективного приказа.
-  3. Реализовать поддержку ветвей `OrderBranch` (закрытые условия/действия, ≤3), проверка условий по знанию командира; ветка `получен противоречащий приказ` срабатывает только если старый приказ уже исполняется.
-  4. В `UnderstandingResolver` внедрить формулу `P = clamp(max(P0,Pmin)+A*(1+0.15*Literalism+0.10*Caution-0.10*Initiative), Pmin, Pmax)` с поддержкой модификатора `Pmin` профиля; выполнять **один** roll на приказ после разрешения конфликтов.
-  5. Реализовать исходы по §4/§5: `no_target` → `correct`/`shift`/`clarify`; `shift` только в соседнюю зону по знанию командира; `clarify` — отдельное событие/запрос с курьером (не misinterpretation); применить 5 типов искажений к `EffectiveOrder` (сдвиг цели, подмена намерения, задержка, буквальное исполнение как исход разрешения, ошибка выбора ветви фиксируется отдельно), исходный приказ не мутировать.
-  6. Добавить/обновить тесты: точные веса A, clamp, формула P, детерминизм конфликтов, один roll, `clarify` не считается misinterpretation, `shift` только к соседу из знания, ветви по знанию/ограничение на 3.
+  1. A: 0; `+0.70`, если `TargetZoneId==null` и `Intent!=Hold`; `+0.15`, если `Deadline==null` и `Intent==Move`.
+  2. P = `clamp(0.03 + A*(1 + 0.15*Pedantry - 0.10*Init), 0.03, 0.90)`; один бросок на приказ после Шага 1.
+  3. Шаг 1 (forbiddenZone): если target != null и (target == forbidden или путь с фильтрацией не существует): `Pedantry >= Init` → `EffectiveOrder=null`, юнит defense, `ImpossibleOrder`, конец; иначе `ForbiddenZone=null`, переход к Шагу 2.
+  4. Шаг 2 (A>0): `rand()<P`; `Pedantry>=2` → `EffectiveOrder=null`, defense, `ClarificationRequest`; иначе target==null → случайный смежный узел (для Recon — узел через ребро от смежного); target!=null → intent swap Move↔Hold.
+  5. Просрочка deadline: `t > Deadline` и цель не достигнута; `Pedantry>=2 && Init<=1` → `EffectiveOrder=null`, defense, `ImpossibleOrder`; иначе продолжать.
+  6. `PendingOrder`: приказ на ребре не исполняется сразу, новый перезаписывает; применяется по завершении ребра; смена приказа сбрасывает recon-окно.
+  7. Обновлять `Order.Status`: Distorted при искажении, FailedRejected при Impossible/Clarification/deadline; A сохранять в Order.
+  8. Тесты: точные A/P, forbidden-конфликт, искажение, deadline, один roll, pendingOrder, recon null/target.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "AmbiguityScorerTests|UnderstandingResolverTests"`
-  - Утверждения: приказ без цели/дедлайна/срока донесения даёт ожидаемое A (с учётом clamp); `Hold` с пустым `Куда` не добавляет 0.7; при A=0 P не опускается ниже `max(P0,Pmin)`; конфликт решается до P и даёт ожидаемый исход по чертам; при одном приказе выполняется один roll; `clarify` создаёт запрос/событие без `OrderMisinterpreted` типа misinterpretation.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpOrderInterpreterTests`
+  - Утверждения: A/P совпадают с §5; forbidden start-зона; pedantry>=init; pedantry>=2 → Clarification; target null → смежный; target != null → swap; deadline-исход; pendingOrder применяется на ребре; ровно один roll.
 - **Готово, если:**
-  - [ ] A, P и разрешение конфликтов соответствуют §4.
-  - [ ] `EffectiveOrder` формируется/искажается отдельно от исходного приказа.
-  - [ ] Тесты покрывают веса, формулу, ветви, clarify/shift/correct и один roll.
+  - [ ] A/P и Шаги 1–2 соответствуют §5.
+  - [ ] EffectiveOrder формируется/искажается отдельно от исходного Order.
+  - [ ] pendingOrder и deadline обработаны.
+  - [ ] Тесты покрывают точные формулы и исходы.
+  - [ ] Нет ветвей/ограничений/режимов движения.
 
-### T-12 — Execution and routing
-- **ID:** `T-12`
-- **Волна:** Wave 1
-- **Покрывает:** §2 (рёбра/объекты), §3–§5 (исполнение, маршрутизация, невыполнимость, дедлайны), трассы D/B.
+### T-36 — MVP: движение по рёбрам, позы, deadline
+- **ID:** `T-36`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §2 шаг 3, §3 (location/posture), §5 (path/deadline/pendingOrder)`; трассы D/B.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Arbitration/IExecutionResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/ExecutionResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/PathPlanner.cs` (новый)
-  - `Kriegsspiel.Core.Tests/ExecutionResolverTests.cs` (новый)
-  - Не трогать другие файлы (в частности `CombatResolver.cs`).
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
-- **Что сделать:**
-  1. Реализовать `PathPlanner`: multi-hop маршруты по графу зон с учётом `EdgeType`, проходимости (`BridgeIntact`, разрушенные рёбра/объекты), режимов движения и времён перехода; запрет «телепорта» в целевую зону.
-  2. В `ExecutionResolver` перейти на пошаговое движение по маршруту: планирование `UnitMoved`/`UnitArrived`/промежуточных шагов, контакт в промежуточной зоне порождает `CombatTick` (через события/планирование по контрактам), учёт дедлайнов и невозможности прибытия.
-  3. Реализовать реакции на невыполнимый приказ по §5 (инициатива/осторожность/доминирующая пара): импровизация, stop+запрос 30–60 мин, выбор по чертам; не подменять логику понимания T-11.
-  4. Применять дельты усталости/боеготовности/внимания по правилам и профилю (через `IGameRules`/параметры T-03), использовать `IReportFactory`/`IGameRules` из T-01 для планируемых событий/донесений в пределах ответственности execution.
-  5. Добавить `ExecutionResolverTests`: multi-hop маршрут, блокировка разрушенным мостом, контакт в промежуточной зоне, реакция на невыполнимость по чертам, соблюдение дедлайна/режима, отсутствие телепорта.
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ExecutionResolverTests`
-  - Утверждения: путь строится через несколько рёбер с корректным временем; непроходимое ребро исключается/меняет маршрут; вход в занятую зону до цели создаёт боевой контакт/тик по контракту; при невыполнимом приказе исход соответствует чертам (импровизация/стоп+запрос/доминирующая пара).
-- **Готово, если:**
-  - [ ] Маршрутизация и движение работают по графу и типам рёбер.
-  - [ ] Невыполнимые приказы и промежуточные контакты обрабатываются по правилам.
-  - [ ] Тесты execution покрывают маршруты, блокировки, контакты и реакции.
-
-### T-13 — Combat and contact geometry
-- **ID:** `T-13`
-- **Волна:** Wave 1
-- **Покрывает:** §2, §7, §8 (геометрия контакта, формулы боя, потери/мораль/боезапас, `PoorControl`, пленные/отход), трасса B.
-- **Владеет файлами:**
-  - `Kriegsspiel.Core/Arbitration/ICombatResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/CombatResolver.cs`
-  - `Kriegsspiel.Core/Arbitration/ContactGeometryResolver.cs` (новый)
-  - `Kriegsspiel.Core.Tests/CombatResolverTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpExecutionResolver.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpExecutionTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31`; использует контракты `IMvpOrderInterpreter`/`IMvpReconResolver`/`IMvpReportFactory` (реализации T-35/T-38 не блокируют параллельный запуск; в тестах — стабы).
 - **Что сделать:**
-  1. Реализовать `ContactGeometryResolver`: определение front/flank/rear по `AttentionEdgeId`/`MoveEdgeId` и рёбрам графа (включая профильный fallback/surprise-level при неоднозначной геометрии), право замечания первым влияет на posture/attention в допустимых пределах.
-  2. Переписать `CombatResolver` по формулам §7: `Strength = N × Readiness/100 × Morale/100 × Position × Terrain × Collision`, terrain-бонус только при обороне, collision front/flank/rear, штрафы морали −10/−15 при фланге/тыле, убрать случайный множитель 1.0–1.1.
-  3. Реализовать потери/тик: раздельный расчёт потерь сторон, немедленная половина + `PendingCasualties(minute+30)`, списание морали в том же тике, расход боезапаса/усталость, влияние `Ammo==0`, проверка `CombatEffective`.
-  4. Учесть `PoorControl` (множители/качество исполнения в бою) и состояния отхода/паники/пленения по приоритетам §7–§8; события/метки для разбора в пределах доменных типов T-01.
-  5. Добавить `CombatResolverTests`: детерминизм (без random 1.0–1.1), front/flank/rear, terrain только в обороне, штрафы морали, отложенные потери, ammo/fatigue/readiness эффекты, auto-withdraw/poor control.
+  1. Начало движения: из узла в ребро `EdgeLocation{RemainingMinutes=travelTime}`; каждый 1-мин тик уменьшать `RemainingMinutes`; при 0 — завершение, offroad `Readiness = max(0, Readiness-5)`, прибытие в `ToZoneId`.
+  2. Немедленный переход на следующее ребро маршрута в тот же тик; `RemainingMinutes` нового ребра в этом тике **не** уменьшается; фактическое время всегда `travelTime` (не `*0.8`).
+  3. Позы: на ребре — March; вход в узел с enemy → Attack; завершённый move в свободный target → Defense + `EffectiveOrder.Intent=Hold` с целью v; hold/recon не начинают движение; recon наблюдает из текущего узла.
+  4. Проверка обнаружения после движения/прибытия — через `IMvpReconResolver` (каденция §6); deadline expiry — через `IMvpOrderInterpreter`/контракт; pendingOrder — применить на завершении ребра.
+  5. Не телепортировать; не двигать hold/recon; не уменьшать readiness на road; offroad только -5.
+  6. Тесты: multi-hop, немедленный переход, no-decrement нового ребра, offroad, posture, deadline, pendingOrder, no teleport.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter CombatResolverTests`
-  - Утверждения: при одинаковом входе и seed/RNG-источнике результат боя детерминирован; flank даёт collision 1.4 и −10 морали, rear 1.8 и −15; ровно половина потерь планируется в `PendingCasualties`; `Ammo==0` снижает боевую эффективность согласно правилам/контрактам.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpExecutionTests`
+  - Утверждения: remainingMinutes/переходы по §2; no-decrement; offroad -5; posture; move→hold; no teleport; hold/recon stationary.
 - **Готово, если:**
-  - [ ] Геометрия и формулы боя реализованы без случайного 1.0–1.1.
-  - [ ] `PendingCasualties`, мораль, боезапас и `PoorControl` обрабатываются по правилам.
-  - [ ] Тесты боя покрывают ключевые формулы и состояния.
+  - [ ] Движение/переходы/позы соответствуют §2–§3.
+  - [ ] PendingOrder применяется на завершении ребра.
+  - [ ] Deadline/обнаружение вызываются через контракты.
+  - [ ] Тесты покрывают multi-hop/offroad/posture/no-teleport.
+  - [ ] Нет fatigue/movement modes/teleport.
 
-### T-14 — Reports, fog of war and recon
-- **ID:** `T-14`
-- **Волна:** Wave 1
-- **Покрывает:** §5 стадия 4, §6 (туман войны, разведка, `fact key`, противоречия, наблюдение), трасса K/D.
+### T-37 — MVP: бой и отступление
+- **ID:** `T-37`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §2 шаг 4, §7 (бой/потери/отход)`; трасса B.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Reports/IReportNarrator.cs`
-  - `Kriegsspiel.Core/Arbitration/KnowledgeUpdater.cs` (новый; реализация контракта из `T-01`, без создания второго интерфейса)
-  - `Kriegsspiel.Core/Arbitration/ReconResolver.cs` (новый)
-  - `Kriegsspiel.Core.Tests/FogOfWarTests.cs` (новый)
-  - `Kriegsspiel.Core.Tests/ReportTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpCombatResolver.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpCombatTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31`; реализация `IMvpCombatResolver`.
 - **Что сделать:**
-  1. Реализовать контракт `IKnowledgeUpdater` из `Kriegsspiel.Core/Contracts/` (владелец `T-01`) классом `KnowledgeUpdater`; `IReportFactory` использовать как готовый контракт T-01. Не создавать дублирующий интерфейс в `Arbitration`. Логику формирования/применения донесений разместить в рамках `Core/Reports/*` и новых arbitration-файлов владельца, строго через `PlayerKnowledge`.
-  2. Реализовать обновление знания: `fact key`, группировка, штраф противоречия до повышения уверенности, cross-confirmation только совпадающих версий от разных источников/наблюдений, хранение обеих версий, no-data vs empty, два timestamp, уверенность 0–3.
-  3. Реализовать искажение/потерю донесений: честность (`ReportHonesty`) влияет на числа/текстовые факты, обычные источники confidence 1–2, разведка/подтверждение до 3, потеря донесения с вероятностью ниже приказов и зависимостью от враждебности маршрута (параметры профиля).
-  4. Реализовать `ReconResolver`: двухшаговая модель `P_success = f(observability, observationTime, reconProfile)`, при провале `P_unconscious|fail = clamp(base×(3−obs)/3,0,cap)` и осознанный провал, взаимное обнаружение/наблюдение по формулам §6.
-  5. Обеспечить, что UI/потребители получают только знание (через `PlayerKnowledge`/донесения), не истину; нарратор использует `ReportTemplates` и не выдумывает факты/время/источник/уверенность.
-  6. Добавить `FogOfWarTests` и `ReportTests`: конфликт версий, cross-confirm, потеря/задержка, искажение честностью, no-data/empty, recon success/fail ветви, отсутствие утечки истины в знание.
+  1. Бой только на `t%30==0`, в каждом узле с юнитами обеих сторон `Strength>0`; recon из соседнего узла не участвует; юниты на рёбрах не участвуют.
+  2. `Power = Strength * Readiness/100 * PostureMult * TerrainMult * AmmoMult`; Posture March 0.5/Attack 1.0/Defense 1.3; Terrain `1+0.1*DefenseBonus` только при Defense; Ammo 1.0 при >0, 0.5 при 0.
+  3. Если `PowerPlayer+PowerEnemy>0`: одновременные потери для каждого юнита `0.25 * PowerEnemy/(sum) * Strength`; `Ammo=max(0,Ammo-1)`, `Readiness=max(0,Readiness-10)`; `Strength==0` → удалить.
+  4. Отступление: выживший с `Strength < 0.30*InitialStrength` → смежный узел без противника с минимальным `travelTime`, `EffectiveOrder=null`; если свободных нет — уничтожить.
+  5. Contact при начале боя (confidence 2) — через `IMvpReportFactory`/T-38; не создавать extended-отчёты.
+  6. Тесты: формулы, terrain только defense, ammo 0, одновременность, удаление, отход/уничтожение, recon не в бою.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "FogOfWarTests|ReportTests"`
-  - Утверждения: противоречащие донесения по одному `fact key` снижают уверенность и сохраняют обе версии; повышение уверенности не применяется к конфликтующим версиям; обычный отчёт не даёт confidence 3; recon при `obs=3` и ненулевом base может давать неосознанное заблуждение согласно профилю; знание не содержит скрытых истинных полей юнитов/зон.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpCombatTests`
+  - Утверждения: Power/потери по §7; terrain только defense; ammo 0→0.5; strength 0 удалён; отход/уничтожение; recon вне боя.
 - **Готово, если:**
-  - [ ] `KnowledgeUpdater`/`ReconResolver` и report-логика реализуют §6.
-  - [ ] `IReportNarrator` и шаблоны используются без выдумывания фактов.
-  - [ ] Тесты fog-of-war/report покрывают ключевые K/D-сценарии.
+  - [ ] Бой реализован без morale/contact geometry/pending casualties.
+  - [ ] Потери/ammo/readiness/удаление по §7.
+  - [ ] Отступление/уничтожение по §7.
+  - [ ] Тесты покрывают формулы и границы.
+  - [ ] Contact-донесение идёт через контракт.
 
-### T-15 — Objectives and after-action report
-- **ID:** `T-15`
-- **Волна:** Wave 1
-- **Покрывает:** §1, §10, §11, §12 (цели, контроль, частичный счёт, метрики разбора, истина только в AAR).
+### T-38 — MVP: разведка, обнаружение, ReconResult
+- **ID:** `T-38`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §2 шаг 3, §6` (p_detect, каденция, confidence, Contact); трасса K.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Assessment/AfterActionReport.cs` (новый)
-  - `Kriegsspiel.Core/Assessment/MetricCalculator.cs` (новый)
-  - `Kriegsspiel.Core/Arbitration/ObjectiveEvaluator.cs` (новый)
-  - `Kriegsspiel.Core.Tests/ObjectiveEvaluatorTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpReconResolver.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpReconTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31`, `T-33`; реализация `IMvpReconResolver`.
 - **Что сделать:**
-  1. Реализовать `ObjectiveEvaluator`: поддержка 7+ типов целей (§11), состояния контроля `Achieved/Contested/Failed` с весами `1/0.5/0`, контрольные минуты, частичный счёт по доле удачных проверок, линейный счёт цели уничтожения до P, сумма весов целей = 1, порог победы (базово 0.7).
-  2. Реализовать `MetricCalculator` и `AfterActionReport`: все 8 метрик §10 (задержка приказов с правилом для потерянных, доля неоднозначных A>0, реакция на противоречия, потери из-за `PoorControl` включая `PendingCasualties`, инициатива «к лучшему» по окну оценки, буквальное исполнение, расхождения намерение≠результат, потери/задачи по гражданским).
-  3. Гарантировать, что истина и полная причинность доступны только в `AfterActionReport`/разборе, а не в игровых представлениях знания.
-  4. Добавить `ObjectiveEvaluatorTests`: контрольные минуты, contested/partial score, уничтожение P%, порог 0.7, расчёт метрик (включая реакцию и потерянные приказы) на детерминированных фикстурах.
+  1. `p_detect = clamp(0.25 + 0.15*Observability - edgePenalty, 0.10, 0.95)`; edgePenalty 0.15 при входе наблюдателя в v или recon через offroad; 0 при периодической проверке в узле.
+  2. Recon-каденция: если `EffectiveOrder.Intent==Recon`, проверять каждый 1-мин тик с `DeliverAt`, пока юнит стоит в узле, из которого `TargetZone` достижим по одному ребру; в наблюдаемый узел не входит; `TargetZone==null` → проверок нет до смены приказа.
+  3. Первый успех → один `ReconResult` confidence 3 и остановка наблюдения; иначе по истечении 30-мин окна от `DeliverAt` → один `ReconResult` confidence 1; смена приказа/применение pendingOrder сбрасывает окно.
+  4. Contact: при входе/прибытии в узел с enemy и при начале боя — Contact confidence 2; recon из соседнего узла в бою не участвует.
+  5. Использовать `MvpReportFactory`/`MvpReportDelivery`; не сливать донесения.
+  6. Тесты: p_detect/edgePenalty, каденция, success/fail/30-мин, reset, contact, recon вне боя.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ObjectiveEvaluatorTests`
-  - Утверждения: `Contested` даёт 0.5; итог сценария = Σ(вес×доля) и сравнивается с 0.7; метрика реакции не засчитывает `ВРЕМЯ +30`; потери `PoorControl` учитывают отложенные потери; потерянный приказ учитывается по правилу задержки/штрафа.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpReconTests`
+  - Утверждения: p_detect по формуле; edgePenalty; успех→conf 3/стоп; провал→conf 1 через 30 мин; смена приказа сбрасывает; Contact conf 2; recon не в бою.
 - **Готово, если:**
-  - [ ] Оценка целей и AAR реализованы по §10–§11.
-  - [ ] Все 8 метрик вычисляются и тестируются.
-  - [ ] Истина отделена от игрового знания.
+  - [ ] p_detect/каденция/окно соответствуют §6.
+  - [ ] Confidence и Contact корректны.
+  - [ ] Смена приказа сбрасывает наблюдение.
+  - [ ] Тесты покрывают success/fail/reset/contact.
+  - [ ] Нет fact-key слияния/скрытой истины.
 
-### T-16 — Persistence DTO and load
-- **ID:** `T-16`
-- **Волна:** Wave 1
-- **Покрывает:** §12 (детерминизм, replay, сохранение/загрузка), трасса D.
+### T-39 — MVP: победа и AAR-метрики
+- **ID:** `T-39`
+- **Волна:** Wave 6
+- **Покрывает:** `rules.md §7` (Score/StateScore/победа, разбор и 3 метрики); трассы B/D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Core/Persistence/*` (новая папка, все новые файлы DTO/маппинга/версий схемы)
-  - `Kriegsspiel.Console/Persistence/JsonSaveStore.cs` (новый путь после переноса)
-  - `Kriegsspiel.Console/Commands/JsonSaveStore.cs` (существующий файл, перенос/удаление в рамках этой задачи)
-  - `Kriegsspiel.Console/Commands/LoadCommand.cs` (новый)
-  - `Kriegsspiel.Core.Tests/PersistenceTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Assessment/MvpObjectiveEvaluator.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Assessment/MvpAfterActionReport.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Assessment/MvpMetrics.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpObjectiveTests.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpMetricsTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
+- **Зависимости:** `T-30`, `T-31` (GameState/IMvpClock); реализация `IMvpObjectiveEvaluator`.
 - **Что сделать:**
-  1. Спроектировать версионированные DTO в `Core/Persistence` (`GameStateDto`, `ClockDto`, `GameEventDto` и сопутствующие DTO): очередь/состояние часов, RNG seed/state, in-transit reports, couriers/ETA, pending casualties, knowledge, orders/effective orders/orderVersion, полиморфные события без проблем абстрактной сериализации графа.
-  2. Реализовать маппинг домен ↔ DTO с версией схемы и контролем совместимости; не сериализовать живой `GameState` напрямую.
-  3. Перенести реализацию сохранения из `Console/Commands/JsonSaveStore.cs` в `Console/Persistence/JsonSaveStore.cs`, адаптировать под DTO/версионирование.
-  4. Добавить `Console/Commands/LoadCommand.cs` (команда загрузки/точка вызова в пределах файла) для восстановления состояния из сохранения; интеграцию в меню/DI не выполнять (T-22).
-  5. Добавить `PersistenceTests`: round-trip save/load для детерминированного состояния (clock queue, RNG, pending casualties, couriers, knowledge, polymorphic events) без потери данных.
+  1. В `EndMinute`: `Score=Σ W_v*StateScore(v)`; Achieved=1.0, если в v есть player-юниты с `IsCombatEffective==true` и нет enemy-боеспособных; Contested=0.5, если боеспособные есть у обеих; Failed=0.0, если player-боеспособных нет; победа при `Score>=WinThreshold`.
+  2. AAR: для каждого приказа — CreatedMinute, SentMinute (null, если не отправлен до EndMinute), DeliverAt (null, если потерян/не отправлен), исходный Order, EffectiveOrder, Status (Executed/Distorted/FailedRejected).
+  3. Метрики: avg(DeliverAt-CreatedMinute) по доставленным; доля приказов с `A>0`; доля Distorted или FailedRejected. Только эти 3; без reaction/initiative/literalism/civilians.
+  4. Тесты: состояния, Score/порог, потерянные/неотправленные, метрики.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter PersistenceTests`
-  - Утверждения: после save/load совпадают минута, `PendingCount`/очередь `Clock`, seed/state RNG, in-transit reports, курьеры/ETA, pending casualties, knowledge (включая конфликтующие версии), `orderVersion` и типы событий.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter "MvpObjectiveTests|MvpMetricsTests"`
+  - Утверждения: Achieved/Contested/Failed по §7; Score/порог; null-поля для потерянных/неотправленных; 3 метрики; расширенных метрик нет.
 - **Готово, если:**
-  - [ ] DTO и маппинг версионированы и покрывают ключевое состояние симуляции.
-  - [ ] `JsonSaveStore` перенесён в `Console/Persistence` и использует DTO.
-  - [ ] `LoadCommand` и `PersistenceTests` добавлены, round-trip проходит.
+  - [ ] Score/StateScore/победа по §7.
+  - [ ] AAR-поля приказа фиксируются.
+  - [ ] Ровно 3 метрики §7.
+  - [ ] Тесты покрывают состояния/метрики.
+  - [ ] Нет extended-метрик.
 
-### T-17 — AI/LLM adapter
-- **ID:** `T-17`
-- **Волна:** Wave 1
-- **Покрывает:** §2, §12 (контракт LLM, валидация/seed/лог/fallback, ограничения на знания), раздел про активного противника как источник приказов.
+### T-40 — MVP: арбитр и порядок тика
+- **ID:** `T-40`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §1 п.6, §2` (игровой цикл, порядок шагов, детерминизм), интеграция §3–§7; трассы D/B/K.
 - **Владеет файлами:**
-  - `Kriegsspiel.AI/Kriegsspiel.AI.csproj` (новый)
-  - `Kriegsspiel.AI/LlmOrderCompiler.cs` (новый)
-  - `Kriegsspiel.AI/LlmReportNarrator.cs` (новый)
-  - `Kriegsspiel.AI/LlmAmbiguityInterpreter.cs` (новый)
-  - `Kriegsspiel.AI/StateQueryTools.cs` (новый)
-  - `Kriegsspiel.AI/Prompts/*` (новая папка, новые файлы промптов/схем)
-  - `Kriegsspiel.Core/Ai/*` (новые файлы только при необходимости интерфейсов/адаптеров; не менять существующие файлы вне папки)
-  - `Kriegsspiel.Core.Tests/AIAdapterTests.cs` (новый; единственное место размещения тестов этой задачи)
-  - Не трогать другие файлы (включая `.slnx`, `Program.cs`, `ServiceRegistration.cs`, `appsettings.json`).
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
-- **Что сделать:**
-  1. Создать проект `Kriegsspiel.AI` с адаптерами: `LlmOrderCompiler` (авторство приказов вражеского штаба в строгой схеме слотов/закрытых списков), `LlmAmbiguityInterpreter` (если требуется профилем/контрактом), `LlmReportNarrator` (только переформулировка уже вычисленных структурированных фактов), `StateQueryTools`, промпты/схемы в `Prompts`.
-  2. Реализовать строгую валидацию схемы ответа, фиксацию seed/лога промпта-ответа-валидации (replay), детерминированный fallback к доктрине/шаблону профиля при невалидном ответе.
-  3. Гарантировать, что LLM не получает истинное состояние игрока, кроме допустимого сценарием знания; понимание приказов/бой/формирование структурированных фактов остаются детерминированными (вне LLM).
-  4. При необходимости добавить только новые интерфейсы/типы в `Kriegsspiel.Core/Ai/*` без правки чужих файлов; не добавлять `ProjectReference`/проекты в `.slnx` (делает T-22).
-  5. Добавить тесты в `Kriegsspiel.Core.Tests/AIAdapterTests.cs`: валидация схемы, fallback на невалидный ответ, отсутствие утечки истинного состояния игрока в prompt/context, воспроизводимость при фиксированном seed/логе.
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.AI/Kriegsspiel.AI.csproj` (если проект подключён локально) и/или `dotnet build Kriegsspiel.slnx` после интеграции T-22
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter AIAdapterTests`
-  - Утверждения: невалидный LLM-ответ отклоняется и приводит к fallback; narrator не добавляет факты/время/источник/уверенность; контекст врага не содержит скрытых полей игрока; фиксированный seed/log даёт воспроизводимый результат.
-- **Готово, если:**
-  - [ ] AI-адаптеры и промпты созданы в рамках ownership.
-  - [ ] Валидация, логирование/replay и fallback реализованы.
-  - [ ] Тесты подтверждают отсутствие утечки истины и корректный fallback.
-
-### T-18 — Enemy doctrine
-- **ID:** `T-18`
-- **Волна:** Wave 1
-- **Покрывает:** §2 (активный противник), §3–§5 (те же стадии приказа для противника), §12 (детерминированный fallback).
-- **Владеет файлами:**
-  - `Kriegsspiel.Core/Arbitration/EnemyDoctrine.cs` (новый)
-  - `Kriegsspiel.Core.Tests/EnemyDoctrineTests.cs` (новый)
-  - Не трогать другие файлы (включая `Arbiter.cs`).
-- **Зависимости:** `T-01`, `T-02`, `T-03`.
-- **Что сделать:**
-  1. Реализовать `EnemyDoctrine` как детерминированный источник/политику формирования вражеских приказов при отключённом LLM (и fallback при ошибке LLM), используя контракты/типы T-01 и параметры T-03.
-  2. Обеспечить, что вражеские приказы проходят те же 4 стадии (передача, понимание, исполнение, донесение) в рамках контрактов конвейера, без специальных исключений в логике доктрины.
-  3. Ограничить входные данные доктрины допустимым знанием противника/сценария (без истинного состояния игрока вне правил наблюдения).
-  4. Добавить `EnemyDoctrineTests`: детерминизм при фиксированном seed/входе, генерация валидных приказов по схеме слотов, корректный fallback-путь, отсутствие зависимости от скрытой истины игрока.
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter EnemyDoctrineTests`
-  - Утверждения: одинаковый seed+состояние дают одинаковые приказы; при отключённом/недоступном LLM используется doctrine/fallback; приказ соответствует закрытым спискам/слотам; вход не содержит истинных скрытых данных игрока.
-- **Готово, если:**
-  - [ ] `EnemyDoctrine` реализована и детерминирована.
-  - [ ] Приказы противника совместимы с теми же стадиями и схемой.
-  - [ ] Тесты доктрины проходят.
-
-## Wave 2 — координация ядра
-
-### T-20 — Arbiter integration
-- **ID:** `T-20`
-- **Волна:** Wave 2
-- **Покрывает:** §3, §5–§7, §9–§11, §14 (единая точка планирования, фазы, in-transit, бой/донесения/запросы, регрессия примера), трассы D/B/K.
-- **Владеет файлами:**
-  - `Kriegsspiel.Core/Arbitration/Arbiter.cs`
-  - `Kriegsspiel.Core/Arbitration/TurnResult.cs`
-  - `Kriegsspiel.Core.Tests/ArbiterIntegrationTests.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpArbiter.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Arbitration/MvpTurnResult.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpArbiterIntegrationTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-01`–`T-03`, `T-10`–`T-18`.
+- **Зависимости:** `T-34`–`T-39` (все механики Wave 6).
 - **Что сделать:**
-  1. Сделать `Arbiter` единственной точкой планирования событий: приём новых приказов/запросов, планирование через `Clock` по фазам, обработка `InTransitReports` и событий до `target`.
-  2. Интегрировать резолверы Wave 1 (transmission/understanding/execution/combat/recon/reports/knowledge/objectives/couriers/enemy doctrine hooks) через контракты и текущие интерфейсы; после движения/прибытий проверять контакт и планировать `CombatTick` на ближайших 30-минутных границах.
-  3. Реализовать семантику журнала/событий: `OrderLost` не логируется как доставка, `QuerySilence` логируется; потерянные/отложенные донесения не теряются на границе отрезка, `TurnResult` содержит только донесения, доставленные к `target`.
-  4. Обеспечить корректный поток «приказ → доставка → понимание → исполнение/движение → бой → формирование донесения → доставка донесения» и обработку `PendingCasualties`/scheduled событий.
-  5. Добавить `ArbiterIntegrationTests`: полный пример §14 (06:15–07:15), сохранение будущих репортов, запуск боя при контакте, отсутствие утечки недоставленных донесений, регрессия на семантику QuerySilence/OrderLost.
+  1. Единая точка: принять Order/Query на CommandPhase (каждые 30 мин, `minute%30==0 && minute<EndMinute`), затем `advanceTime(30)`; внутри 1-мин тика порядок: 1) отправка депеш; 2) доставка/интерпретация; 3) движение/обнаружение/deadline; 4) при `t%30==0` бой + отдых (+5 readiness тем, кто не двигался/не воевал 30 мин); 5) доставка донесений/возврат курьеров/SilenceDetected.
+  2. Лексикографический порядок `id` для юнитов и депеш; единый `MvpRandom`; одинаковый seed+вход → одинаковый EventLog/TurnResult.
+  3. In-transit отчёты не теряются на границе `target`; `TurnResult` содержит только доставленное к `target`.
+  4. Интегрировать резолверы через контракты; не менять legacy `Arbiter`.
+  5. Тесты: таймлайн 06:15–07:15, in-transit, Contact/CombatTick, Silence, OrderLost не как доставка, одинаковый seed → одинаковый лог.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter ArbiterIntegrationTests`
-  - Утверждения: приказ 06:15 доставляется/понимается/исполняется по таймлайну §14; донесение с доставкой после конца отрезка остаётся в пути; `TurnResult` на 07:15 не включает недоставленные сообщения; контакт планирует `CombatTick`; событие `QuerySilence` присутствует при отсутствии ответа в окне, `OrderLost` не отображается как доставка.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpArbiterIntegrationTests`
+  - Утверждения: порядок шагов §2; CommandPhase; in-transit; TurnResult; OrderLost; детерминизм.
 - **Готово, если:**
-  - [ ] `Arbiter` координирует все стадии и очередь через `Clock`.
-  - [ ] In-transit/отложенные события и бой интегрированы корректно.
-  - [ ] Интеграционный регресс на §14 проходит.
+  - [ ] Арбитр реализует цикл §2 и порядок шагов.
+  - [ ] Лексикографический порядок и seed-детерминизм подтверждены.
+  - [ ] In-transit/граница target корректны.
+  - [ ] OrderLost/Silence семантически корректны.
+  - [ ] Legacy `Arbiter` не изменён.
 
-## Wave 3 — CLI/UI и уборка
-
-### T-21a — Order constructor CLI
-- **ID:** `T-21a`
-- **Волна:** Wave 3
-- **Покрывает:** §4, §13 (конструктор приказов, слоты, ветви, режимы, ограничения, дедлайны).
+### T-41 — MVP: сценарий `mvp_01` и скриптовый противник
+- **ID:** `T-41`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §1, §2` (входы сценария, внешний контроллер enemy), §7 (победа); трассы D/B.
 - **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/OrderCommand.cs`
-  - `Kriegsspiel.Console/Commands/OrderBuilder.cs` (новый)
+  - `Content/scenarios/mvp_01.json` (новый)
+  - `Kriegsspiel.Core/Mvp/Controllers/MvpScriptedEnemyController.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpScenarioTests.cs` (новый)
   - Не трогать другие файлы.
-- **Зависимости:** `T-20`.
+- **Зависимости:** `T-40`, `T-32`.
 - **Что сделать:**
-  1. Реализовать в `OrderBuilder`/`OrderCommand` полный конструктор 7 слотов: кому/что/куда/к какому времени/ограничения/когда донести/режим передвижения, закрытые списки намерений/ограничений/режимов, цели и объекты/юниты где применимо.
-  2. Добавить поддержку ветвей (предпросмотр «если X → сделаю Y», не более 3), шаблонов/повторного использования, дедлайна и срока донесения.
-  3. Показывать расчёт/предпросмотр неоднозначности A (если доступно через контракты/данные) без раскрытия истины и скрытого состояния; выводить только данные, доступные игроку.
-  4. Сформировать валидный `Order` для передачи в существующий поток (без изменения `ServiceRegistration`/`GameLoop`).
+  1. Создать `mvp_01`: player/enemy, hqZone, courierPool, targetZones, seed, 1–2 часа, рёбра road/offroad с travelTime/courierTime, commander traits 0..3, стартовые posture defense.
+  2. `MvpScriptedEnemyController`: на CommandPhase возвращает enemy-приказы в том же `Order`-формате (Move/Hold/Recon, targetZone, deadline, forbiddenZone); без LLM; детерминирован по seed/минуте.
+  3. Сквозной тест: загрузка/фабрика, прогон до EndMinute, проверка доставки приказов, движения, recon/contact, боя, победы; одинаковый seed → одинаковый EventLog/отчёты.
+  4. Не добавлять новых механик; enemy подчиняется тем же резолверам.
+  5. Тесты: сценарий валиден, контроллер детерминирован, полный прогон воспроизводим.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - Ручной сценарий CLI: команда приказа позволяет задать все 7 слотов, выбрать ограничение из закрытого списка, добавить до 3 ветвей, задать режим и оба дедлайна; попытка добавить 4-ю ветвь отклоняется.
-  - Утверждения: создаваемый приказ содержит `TargetObjectId`/`TargetUnitId`/`MovementMode`/`Constraints`/`Branches`/сроки при заполнении; UI не показывает истинное расположение/состояние противника.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpScenarioTests`
+  - Утверждения: `mvp_01` загружается; enemy-приказы валидны; полный прогон детерминирован; победа/поражение считается.
 - **Готово, если:**
-  - [ ] Конструктор покрывает все слоты и закрытые списки §4.
-  - [ ] Ветви/режим/дедлайны/срок донесения поддержаны с предпросмотром.
-  - [ ] Истина не раскрывается в интерфейсе приказа.
+  - [ ] `mvp_01` валиден и покрывает ключевые механики.
+  - [ ] Скриптовый контроллер детерминирован и использует тот же Order.
+  - [ ] Сквозной тест воспроизводим при одинаковом seed.
+  - [ ] Новых механик нет.
 
-### T-21b — Query CLI
-- **ID:** `T-21b`
-- **Волна:** Wave 3
-- **Покрывает:** §3, §5, §13 (запросы, приоритет, молчание 30–60/60 мин семантика событий).
+### T-42a — MVP: UI приказа
+- **ID:** `T-42a`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §5` (move/hold/recon, target, deadline, forbidden); трасса D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/QueryCommand.cs` (новый)
-  - Не трогать другие файлы.
-- **Зависимости:** `T-20`.
+  - `Kriegsspiel.Core/Mvp/Orders/MvpOrderDraftBuilder.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpOrderDraftBuilderTests.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpOrderCommand.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpOrderBuilder.cs` (новый)
+  - Не трогать другие файлы (legacy `OrderBuilder.cs`/`OrderCommand.cs` не менять).
+- **Зависимости:** `T-40`, `T-35`.
 - **Что сделать:**
-  1. Реализовать `QueryCommand` с интерфейсом `ICommand` (сигнатура по существующему контракту): выбор адресата/типа запроса, формирование запроса как сообщения, занимающего курьера.
-  2. Отображать/инициировать поток событий запроса: `QuerySent`, ожидание ответа `QueryAnswered` (донесение с 4 полями) или `QuerySilence` при отсутствии ответа в окне; учитывать приоритет запросов и ETA через доступные сервисы/состояние.
-  3. Не раскрывать истину; показывать только отправку/статусы/полученные донесения из журнала/знания.
+  1. `MvpOrderDraftBuilder` (Core, чистая логика): выбрать unit, intent Move/Hold/Recon, targetZone (или null для hold), deadline?, forbiddenZone?; закрытые списки; без ветвей/ограничений/режимов движения/7 слотов.
+  2. Предпросмотр A и P через `MvpAmbiguityScorer`; не раскрывать скрытую истину.
+  3. Console-команда/билдер — тонкая обёртка над Core-билдером; валидировать существование zone/unit.
+  4. Тесты Core-билдера; build Console.
+  5. Legacy UI не менять.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - Ручной сценарий CLI: создание запроса формирует отправку и не блокирует UI; при ответе отображается донесение с минутой события, минутой доставки, источником и уверенностью; при отсутствии ответа фиксируется/отображается `QuerySilence`.
-  - Утверждения: запрос использует тот же курьерный механизм/очередь; `QuerySilence` не интерпретируется как «факта нет».
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpOrderDraftBuilderTests`
+  - Утверждения: доступны только move/hold/recon + target/deadline/forbidden; A/P предпросмотр; невалидные zone/unit отклоняются; нет extended-полей.
 - **Готово, если:**
-  - [ ] `QueryCommand` реализован как `ICommand`.
-  - [ ] `QuerySent/QueryAnswered/QuerySilence` поддержаны в пользовательском потоке.
-  - [ ] Истина не раскрывается.
+  - [ ] Core-билдер реализует §5-слоты.
+  - [ ] Console-команда компилируется и вызывает Core-билдер.
+  - [ ] Предпросмотр A/P есть.
+  - [ ] Legacy UI не изменён.
 
-### T-21c — Map renderer
-- **ID:** `T-21c`
-- **Волна:** Wave 3
-- **Покрывает:** §6, §13 (карта знания, no-data vs empty, уверенность, противоречия), трасса K.
+### T-42b — MVP: карта, журнал, обстановка, донесения
+- **ID:** `T-42b`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §3 (location/posture), §4 (курьеры/ETA/silence), §6 (донесения/confidence/версии)`; трассы K/D.
 - **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/MapRenderer.cs`
-  - Не трогать другие файлы.
-- **Зависимости:** `T-20`.
+  - `Kriegsspiel.Core/Mvp/Reporting/MvpPresentationFormatter.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpPresentationTests.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpMapCommand.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpMapRenderer.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpJournalRenderer.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpReportRenderer.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Commands/MvpSituationCommand.cs` (новый)
+  - Не трогать другие файлы (legacy renderers/commands не менять).
+- **Зависимости:** `T-40`, `T-33`.
 - **Что сделать:**
-  1. Переписать `MapRenderer` на чтение **только** `PlayerKnowledge` (и производных данных знания), полностью убрать использование истинных полей `Zone.PresentUnitIds`/скрытого состояния юнитов.
-  2. Отображать для зон: no-data vs пусто, оба timestamp (событие и доставка/обновление), уверенность 0–3, контролирующую/известную информацию только из знания.
-  3. При противоречии по `fact key` показывать обе конфликтующие версии и сниженную уверенность (не последнюю истину).
+  1. `MvpPresentationFormatter` (Core, чистая логика): карта/топология, no-data/empty/occupied по логу донесений, confidence, event/delivery time, все версии без слияния; журнал приказов/курьеров/ETA/silence/report lost; обстановка/донесения с обязательными полями и возрастом.
+  2. Console-рендеры используют только `MvpGameState`/`ReportLog`/EventLog; не читать скрытую истину enemy; различать `QuerySilence`/`ReportLost`/`ReportDelivered`.
+  3. Показать свои силы в допустимом объёме; enemy — только по донесениям/логу.
+  4. Тесты Core-форматтера; build Console.
+  5. Legacy renderers не менять.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - Ручной/тестовый сценарий: карта без наблюдений показывает «нет данных», после донесения о пустоте — «пусто»; при двух конфликтующих донесениях видны обе версии и confidence снижена.
-  - Утверждения: в коде/выводе нет чтения `PresentUnitIds`; отображаются оба времени и уровень уверенности 0–3.
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpPresentationTests`
+  - Утверждения: no-data/empty/occupied; confidence/времена; все версии; silence/lost/delivered различимы; нет скрытой истины.
 - **Готово, если:**
-  - [ ] Рендер карты использует только знание игрока.
-  - [ ] No-data/empty, timestamps, confidence и конфликты отображаются корректно.
-  - [ ] Утечка истины через карту устранена.
+  - [ ] Core-форматтер покрывает карту/журнал/обстановку/донесения.
+  - [ ] Console-рендеры компилируются и используют только знание/лог.
+  - [ ] Версии не сливаются, silence/lost различимы.
+  - [ ] Legacy UI не изменён.
 
-### T-21d — Journal renderer
-- **ID:** `T-21d`
-- **Волна:** Wave 3
-- **Покрывает:** §3, §5, §13 (журнал, ETA курьеров, семантика потерь/молчания), трасса D.
+### T-42c — MVP: shell/DI и режим `Engine=Mvp`
+- **ID:** `T-42c`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §2 (цикл/CommandPhase)`, интеграция Mvp-команд/сохранения в консоль; трассы D/K.
 - **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/JournalRenderer.cs`
-  - Не трогать другие файлы.
-- **Зависимости:** `T-20`.
-- **Что сделать:**
-  1. Переработать `JournalRenderer` для отображения семантических минут: отдача, отправка/доставка/возврат курьера (ETA и факт), получение донесений, статусы приказов/запросов.
-  2. Показывать видимую очередь курьеров и ETA; `QuerySilence` отображать явно; потерю приказа не показывать как доставку.
-  3. Отражать различие «курьер не вернулся»/`deliveryConfirmed=false` от факта потери приказа (без утверждения о недоставке при потере обратного плеча).
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - Ручной сценарий CLI: журнал показывает ETA и фактические минуты, очередь и статусы курьеров; при `QuerySilence` есть запись; при потере на обратном пути нет записи «приказ потерян/не доставлен».
-  - Утверждения: потерянные приказы не отображаются как `OrderDelivered`; события/записи сортированы по времени/семантике.
-- **Готово, если:**
-  - [ ] Журнал отражает ETA, очередь и семантические минуты.
-  - [ ] `QuerySilence` видим, семантика потерь корректна.
-
-### T-21e — Situation and report renderer
-- **ID:** `T-21e`
-- **Волна:** Wave 3
-- **Покрывает:** §5, §6, §13 (обстановка, донесения, возраст/источник/уверенность, противоречия), трасса K/D.
-- **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/SituationCommand.cs`
-  - `Kriegsspiel.Console/Commands/ReportRenderer.cs`
-  - Не трогать другие файлы.
-- **Зависимости:** `T-20`.
-- **Что сделать:**
-  1. Обновить `ReportRenderer` для вывода 4 обязательных полей донесения (минута события, минута доставки, источник, уверенность), типа/текста/фактов и возраста; использовать `IReportFactory`/нарратор/шаблоны через доступные контракты (без правки DI/файлов вне ownership).
-  2. Обновить `SituationCommand` для показа обстановки на основе доставленных донесений и `PlayerKnowledge`: противоречивые версии, no-data vs empty где применимо, без раскрытия истины.
-  3. Поддержать отображение `ReportKind.Impossible` и запросных ответов/молчания в пользовательском представлении (в рамках этих файлов).
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - Ручной сценарий CLI: ОБСТАНОВКА показывает донесения с источником, обеими минутами, уверенностью и возрастом; конфликтные донесения отображаются как противоречие, а не как единственная «истина».
-  - Утверждения: нет прямого обращения к скрытому истинному состоянию; `Impossible` и ответы на запросы визуально различимы.
-- **Готово, если:**
-  - [ ] Рендер донесений показывает все обязательные поля и возраст.
-  - [ ] ОБСТАНОВКА опирается на знание/доставленные донесения и отражает противоречия.
-
-### T-22 — Shell/DI/integration
-- **ID:** `T-22`
-- **Волна:** Wave 3
-- **Покрывает:** §3, §12, §13 (меню/цикл, DI, конфигурация, интеграция AI/пersistence/команд).
-- **Владеет файлами:**
+  - `Kriegsspiel.Console/Mvp/MvpGameLoop.cs` (новый)
   - `Kriegsspiel.Console/Startup/ServiceRegistration.cs`
-  - `Kriegsspiel.Console/Startup/GameLoop.cs`
-  - `Kriegsspiel.Console/Program.cs`
   - `Kriegsspiel.Console/appsettings.json`
-  - `Kriegsspiel.Console/Kriegsspiel.Console.csproj`
-  - `Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj` (только при необходимости добавить package reference/настройки для новых тестов)
-  - `Kriegsspiel.slnx`
-  - Не трогать другие файлы (включая `Kriegsspiel.Core/Kriegsspiel.Core.csproj`, файлы команд/рендереров, кроме регистрации/вызова из перечисленных).
-- **Зависимости:** `T-20`, `T-21a`–`T-21e`, `T-16`, `T-17`, `T-18`.
+  - Не трогать другие файлы.
+- **Зависимости:** `T-40`, `T-41`, `T-42a`, `T-42b`, `T-43`.
 - **Что сделать:**
-  1. Обновить DI в `ServiceRegistration.cs`: зарегистрировать новые сервисы/резолверы/контракты, persistence, AI (включая `Kriegsspiel.AI` при наличии), narrator/factory/knowledge/query компоненты; читать `UseLlm`/`Llm` настройки из конфигурации.
-  2. Подключить команды в меню/цикле (`GameLoop`, `Program`): `ОБСТАНОВКА`, `КАРТА`, `ПРИКАЗ`, `ЗАПРОС`, `ЖУРНАЛ`, `ВРЕМЯ`, `СОХРАНИТЬ`, `ЗАГРУЗИТЬ`, `ВЫЙТИ`; использовать `AddCommandLine`/конфигурационный пайплайн как требуется текущей архитектуре.
-  3. Обновить `appsettings.json` секциями `UseLlm`/`Llm` и актуальными путями контента/сценария (без изменения JSON-контента сценариев/таблиц, которыми владеет T-03).
-   4. Обновить `Kriegsspiel.Console.csproj` и `Kriegsspiel.slnx`: добавить ссылку/проект `Kriegsspiel.AI`, исправить `Solution Items` только в пределах `slnx`; при необходимости добавить package reference в `Kriegsspiel.Core.Tests.csproj`; не редактировать `Kriegsspiel.Core.csproj`.
-  5. Обеспечить сборку и запуск консольного shell с новыми командами и конфигурацией LLM on/off.
+  1. В `ServiceRegistration` ветвление по `config["Engine"]` (`Legacy` по умолчанию; `Mvp` — новый режим). В `Mvp` загрузить `MvpContentLoader`/сценарий, зарегистрировать `MvpArbiter`, `MvpRandom`, резолверы, команды, save/load; не инициализировать legacy DI/LLM.
+  2. `MvpGameLoop`: меню ОБСТАНОВКА/КАРТА/ПРИКАЗ/ЗАПРОС/ЖУРНАЛ/ВРЕМЯ/СОХРАНИТЬ/ЗАГРУЗИТЬ/ВЫЙТИ; CommandPhase каждые 30; вывод доставленных донесений; `ВРЕМЯ` вызывает `AdvanceTo(now+30)`.
+  3. `appsettings.json`: добавить `"Engine": "Legacy"` (по умолчанию) и пример `Mvp`; не менять legacy-настройки.
+  4. Проверить TTY-прогон `--Engine Mvp --Scenario mvp_01`; legacy-режим не сломан.
+  5. Не менять legacy команды/резолверы.
 - **Как проверить:**
   - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.slnx` (или эквивалентный набор test-проектов после интеграции)
-  - Ручной запуск: меню содержит все 9 действий; `ЗАГРУЗИТЬ/СОХРАНИТЬ` вызывают новые команды/store; переключение `UseLlm` не ломает запуск (fallback/отключение работает).
-  - Утверждения: DI резолвит `Arbiter`, команды, persistence, narrator/factory; `slnx` ссылается на существующие проекты и актуальные solution items.
+  - `dotnet test Kriegsspiel.slnx`
+  - `script -qec "dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj -- --Engine Mvp --Scenario mvp_01" /tmp/opencode/mvp-smoke.log`
+  - Утверждения: меню 9 действий; MVP-сценарий запускается; приказ/время/карта/журнал работают; `Engine=Legacy` работает как раньше.
 - **Готово, если:**
-  - [ ] Все новые сервисы и команды подключены в shell/DI.
-  - [ ] Конфигурация LLM и проекты/решение обновлены.
-  - [ ] Приложение собирается и предоставляет полный набор действий меню.
+  - [ ] `Engine=Mvp` поднимает MVP-стек без legacy/LLM.
+  - [ ] `MvpGameLoop` реализует меню/CommandPhase/время.
+  - [ ] TTY-прогон успешен; legacy-режим не сломан.
+  - [ ] Legacy `ServiceRegistration`-поведение по умолчанию сохранено.
 
-### T-23 — Final cleanup/docs
-- **ID:** `T-23`
-- **Волна:** Wave 3 (финальная, после `T-21a`–`T-21e`, `T-22` и всех предыдущих волн)
-- **Покрывает:** §12, поддерживаемость репозитория, приведение структуры/имён к актуальному состоянию.
+### T-43 — MVP: persistence (save/load)
+- **ID:** `T-43`
+- **Волна:** Wave 7
+- **Покрывает:** `rules.md §1 п.6, §2` (детерминизм/воспроизводимость), сохранение состояния MVP; трасса D.
 - **Владеет файлами:**
+  - `Kriegsspiel.Core/Mvp/Persistence/MvpGameStateDto.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Persistence/MvpPersistenceMapper.cs` (новый)
+  - `Kriegsspiel.Core/Mvp/Persistence/MvpPersistenceJson.cs` (новый)
+  - `Kriegsspiel.Console/Mvp/Persistence/MvpJsonSaveStore.cs` (новый)
+  - `Kriegsspiel.Core.Tests/Mvp/MvpPersistenceTests.cs` (новый)
+  - Не трогать другие файлы (legacy `Core/Persistence/*`, `Console/Persistence/JsonSaveStore.cs` не менять).
+- **Зависимости:** `T-40`.
+- **Что сделать:**
+  1. Версионированные DTO для `MvpGameState`: Now/очередь `MvpClock`, seed/RNG state, zones/edges, units/locations, orders/effective/pending, couriers/ETA, in-transit/delivered reports, report log, EventLog, EndMinute/HqZoneId.
+  2. Маппинг домен ↔ DTO; не сериализовать живой `MvpGameState` напрямую; схема/версия.
+  3. `MvpJsonSaveStore`: save/load в `saves/` (gitignored), стабильные JSON options.
+  4. Round-trip тест: состояние после load эквивалентно; продолжение с тем же seed детерминировано.
+  5. Legacy persistence не менять.
+- **Как проверить:**
+  - `dotnet build Kriegsspiel.slnx`
+  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter MvpPersistenceTests`
+  - Утверждения: round-trip сохраняет минуту/очередь/RNG/локации/приказы/курьеров/отчёты/лог/EventLog; продолжение детерминировано.
+- **Готово, если:**
+  - [ ] DTO покрывают ключевое состояние MVP.
+  - [ ] Round-trip проходит.
+  - [ ] Save/load не ломает детерминизм.
+  - [ ] Legacy persistence не изменён.
+
+### T-44 — MVP: документация и структура
+- **ID:** `T-44`
+- **Волна:** Wave 8
+- **Покрывает:** `AGENTS.md` (актуализация `structure.md`/доков), `docs/projectDocs/instructions.md` (конвенции MVP-режима); механик не добавляет.
+- **Владеет файлами:**
+  - `docs/projectDocs/structure.md`
   - `readme.md`
-  - `.gitignore`
-  - `Kriegsspiel.Core/Kriegsspiel.Core.csproj`
-  - Ренеймы/перемещения (владеет исходными и целевыми путями операции):
-    - `Kriegsspiel.Core/Arbitration/ITransmitionResolvers.cs` → `Kriegsspiel.Core/Arbitration/ITransmissionResolver.cs`
-    - `Kriegsspiel.Core/Arbitration/TransmitionResolver.cs` → `Kriegsspiel.Core/Arbitration/TransmissionResolver.cs`
-    - папка `Kriegsspiel.Core/Reports/` → `Kriegsspiel.Core/Reporting/` (все файлы внутри)
-    - папка/элемент `Assesment` → `Assessment` в структуре проекта (включая удаление/замену устаревшей записи в `Kriegsspiel.Core.csproj`)
-  - Не трогать другие файлы (`AGENTS.md` не менять).
-- **Зависимости:** все задачи `T-01`–`T-22`.
-- **Что сделать:**
-  1. Выполнить финальные ренеймы: `Transmition*` → `Transmission*`, `Reports` → `Reporting`, `Assesment` → `Assessment`; обновить namespace/using/ссылки в затронутых владельцем путях так, чтобы сборка оставалась консистентной после завершения всех волн.
-  2. Очистить `Kriegsspiel.Core.csproj` от устаревших пустых/неверных `Folder Include` (`Assesment\`, `Ai\` при необходимости) в соответствии с фактической структурой после интеграции.
-  3. Обновить `readme.md` под реальную структуру решения/проектов, команд запуска, тестов, контента и конфигурации; исправить описание `Solution Items`/структуры, если оно расходится с `Kriegsspiel.slnx`.
-  4. Обновить `.gitignore` при необходимости для артефактов сборки/сохранений/локальных файлов, не нарушая отслеживаемый контент.
-  5. Не изменять `AGENTS.md` и правила.
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.slnx`
-  - Утверждения: в репозитории нет файлов/папок со старыми именами `Transmition*`, `Kriegsspiel.Core/Reports`, `Assesment`; `Kriegsspiel.Core.csproj` не содержит устаревших пустых записей; `readme.md` соответствует фактическим проектам (`Kriegsspiel.Core`, `Kriegsspiel.Console`, `Kriegsspiel.Core.Tests`, `Kriegsspiel.AI` если присутствует), командам и структуре.
-- **Готово, если:**
-  - [ ] Ренеймы и чистка проекта выполнены без нарушения сборки.
-  - [ ] Документация и `.gitignore` актуализированы.
-  - [ ] `AGENTS.md` и правила не изменены.
-
-
-## Wave 4 — FS-005: большие карты и отображение в консоли
-
-Источник требований: `docs/gameDocs/featureSpecs/FS-005-large-maps-console-display.md` (ready_for_decomposition), `docs/gameDocs/featureBacklog.md` #5, `docs/gameDocs/rules.md §1, §3, §4, §6, §12`. Учтённый техдолг (`docs/projectDocs/tech-debt.md`): активных `open`/`planned` нет; новых продуктовых находок в рамках декомпозиции не зафиксировано.
-
-Launch-план волны (явно): G1=`T-24`, G2=`T-25` — параллельно после gate (файлы не пересекаются). Порядок merge в ветку волны: после per-task `verified` в любом порядке (по одной задаче). Ref сценария/gate: «Сценарии проверок волн (детально) → Wave 4 — FS-005…».
-
-### T-24 — Scalable knowledge-map console view (overview/detail, topology, units)
-- **ID:** `T-24`
-- **Волна:** Wave 4
-- **Покрывает:** `FS-005`, `docs/gameDocs/rules.md §1` (топология зон/рёбра/типы/время), `§6` (знание ≠ истина, no-data/empty, уверенность, метки времени события/доставки, противоречия/версии, противник только как знание), `§4` (контекст планирования по карте), backlog #5, трасса K (и контекст D для меток доставки/обновления в знании).
-- **Владеет файлами:**
-  - `Kriegsspiel.Console/Commands/MapCommand.cs`
-  - `Kriegsspiel.Console/Commands/MapRenderer.cs`
+  - `docs/projectDocs/instructions.md`
   - Не трогать другие файлы.
-- **Зависимости:** Wave 3 (включая `T-20`, `T-21c`, `T-22`).
+- **Зависимости:** Wave 7.
+- **Роль:** `docs-maintainer` (не `implementer`).
 - **Что сделать:**
-  1. Реализовать масштабируемое топологическое текстовое представление **графа знаний** (без псевдогеографической раскладки): компактный обзор по умолчанию и режим детализации/фокуса для выбранной зоны или окрестности, с явным отображением топологии — соседи и характеристики связей (тип ребра road/offroad/crossing и/или время перехода) в объёме, достаточном для оценки маршрутов и узких мест.
-  2. Добавить навигацию в контексте карты: переход обзор↔деталь/фокус, сужение отображаемого множества зон по релевантным признакам (состояние знания `нет данных`/`пусто`/`занято`, принадлежность/кем по донесениям, идентификатор/название зоны) и/или поиск, с возможностью вернуться к обзору. Обеспечить читаемость в терминале при большом числе зон/юнитов (сводка/ограничение одновременно выводимых деталей, постраничность или эквивалент), без единственного перегруженного полотна по умолчанию.
-  3. Для каждой отображаемой зоны сохранять и показывать обязательные элементы знания `§6`: состояние (`нет данных`/`пусто`/`занято`), кем по донесениям (в пределах знания), уверенность, время события (если известно) и время доставки/обновления, представление противоречий/версий (обе версии не скрываются).
-  4. Реализовать масштабируемое отображение подразделений в привязке к карте: сводка/группировка/фильтрация (или эквивалент) для сопоставления с зонами. **Собственные силы** — в объёме, необходимом для командования/соотнесения с картой (идентификация и привязка к известному в интерфейсе положению/контексту). **Противник** — только как знание/донесения (занятость, кем по донесениям, уверенность, противоречия), без фактического скрытого состава/параметров и без раскрытия скрытой истины. Явно разделять источники данных (статическая топология/атрибуты карты, `PlayerKnowledge`, сведения о своих подразделениях, допустимые в UI).
-  5. Не использовать `Zone.PresentUnitIds` или иные истинные скрытые поля как источник знания/отображения противника; не вносить изменения в `AGENTS.md`/`docs/gameDocs/rules.md` и файлы вне ownership.
+  1. Обновить `structure.md`: добавить `Kriegsspiel.Core/Mvp/**`, `Kriegsspiel.Console/Mvp/**`, `Kriegsspiel.Core.Tests/Mvp/**`, `Content/scenarios/mvp_01.json`; отметить legacy как frozen/legacy (без удаления).
+  2. Обновить `readme.md`: MVP-режим `--Engine Mvp`, legacy-режим, команды проверки, ограничения MVP, ссылки на `TD-001`–`TD-003`.
+  3. Обновить `instructions.md` при необходимости: новые конвенции/Mvp-папки/тестовые фильтры; не менять `AGENTS.md`/`rules.md`.
+  4. Проверить, что docs не расходятся с фактической структурой; ничего не выдумывать.
 - **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.slnx`
-  - Ручной сценарий (регрессия/базовая пригодность): `dotnet run --project Kriegsspiel.Console/Kriegsspiel.Console.csproj -- --Scenario test_01` (и/или `crossing_01`) → команда `КАРТА`. Утверждения: по умолчанию отображается компактный обзор состояний знания/топологического контекста; доступен переход в деталь/фокус выбранной зоны и возврат к обзору; в детале видны соседи и тип ребра и/или время перехода; для зон отображаются состояние знания, кем по донесениям (в пределах знания), уверенность, метки времени события и доставки/обновления, при противоречиях — обе версии; доступно сужение/поиск/фильтр и/или сводка.
-  - Ручной сценарий (юниты/туман войны): в том же прогоне проверить блок/представление подразделений в контексте карты — собственные силы (Blue) соотносимы с известным положением/контекстом, противник не раскрывается из скрытой истины (только знание/донесения по зонам). При отсутствии наблюдений — `нет данных`, при донесении о пустоте — `пусто` (семантика §6 сохранена).
-  - Статическая проверка (анти-утечка в файлах владельца): `grep -n "PresentUnitIds" Kriegsspiel.Console/Commands/MapCommand.cs Kriegsspiel.Console/Commands/MapRenderer.cs` не возвращает совпадений.
-  - Утверждения: требования FS-005 (обзор↔деталь, топология, §6, масштабируемость/навигация, разделение знание/истина и ограничения по юнитам) выполняются в пределах реализованного UI.
+  - `dotnet build Kriegsspiel.slnx`; `dotnet test Kriegsspiel.slnx` (без изменений)
+  - `grep -n "Mvp" docs/projectDocs/structure.md readme.md`
+  - `git diff --name-only` — только docs-файлы; `AGENTS.md`/`docs/gameDocs/rules.md` не изменены.
 - **Готово, если:**
-  - [ ] Реализованы обзор↔деталь/фокус, явная топология (соседи, тип/время рёбер) и средства сужения (фильтр/поиск/сводка) в текстовом представлении графа знаний.
-  - [ ] Для отображаемых зон сохранены обязательные элементы знания §6, включая противоречия/обе версии.
-  - [ ] Отображение подразделений масштабируемо и соблюдает туман войны: противник — только знание/донесения, собственные силы — в допустимом для командования объёме.
-  - [ ] Нет утечки скрытой истины о противнике; `PresentUnitIds` не используется в файлах владельца; сборка/тесты и ручные проверки проходят.
+  - [ ] `structure.md` содержит все Mvp-файлы и `mvp_01`.
+  - [ ] `readme.md` описывает `Engine=Mvp`/legacy/TD.
+  - [ ] `instructions.md` актуален.
+  - [ ] `AGENTS.md`/`rules.md` не изменены; код не менялся.
 
-### T-25 — FS-005 enlarged-scale demo scenario and scale/content checks
-- **ID:** `T-25`
-- **Волна:** Wave 4
-- **Покрывает:** `FS-005` (ориентир масштабируемости ≥30 зон и/или ≥30 подразделений, проверка на контенте увеличенного масштаба), `docs/gameDocs/rules.md §1, §12` (валидный граф/сценарий), backlog #5.
-- **Владеет файлами:**
-  - `Content/scenarios/fs005_scale_demo.json` (новый)
-  - `Kriegsspiel.Core.Tests/Fs005ScaleContentTests.cs` (новый)
-  - `docs/projectDocs/structure.md` (добавить запись о новом сценарии)
-  - Не трогать другие файлы.
-- **Зависимости:** Wave 3 (`T-03` loader/schema, контентная инфраструктура).
-- **Что сделать:**
-  1. Добавить демо/тестовый сценарий увеличенного масштаба `fs005_scale_demo.json`, удовлетворяющий ориентиру FS-005 (не менее ~30 зон и/или ~30 подразделений суммарно), с валидной топологией (`travelMinutes`/`edgeTypes`), корректными ссылками и данными, совместимыми с текущей схемой/загрузчиком, пригодный для проверки читаемости и навигации карты. В базе уже есть `river_line_10x10` (100 зон, 14 подразделений) как готовый масштабный пример; новый демо-сценарий создаётся только в рамках ownership и не изменяет его.
-  2. Добавить автоматические проверки (тесты), подтверждающие загрузку сценария через `ContentLoader` вместе с каноническими `Content/friction.json` и `Content/reports.json` и выполнение критериев масштаба (количество зон и/или подразделений) без ошибок валидации.
-  3. Не изменять существующие сценарии/контент вне ownership (включая `Content/scenarios/river_line_10x10.json`) и не вносить продуктовый код; изменения ограничены тестовым/демо-контентом, тестами и обязательной записью в `docs/projectDocs/structure.md` в рамках задачи.
-  4. Обновить `docs/projectDocs/structure.md`: добавить запись о `Content/scenarios/fs005_scale_demo.json` в раздел `Content/scenarios`, не меняя остальные разделы (требование AGENTS.md об актуализации структуры при добавлении файлов).
-- **Как проверить:**
-  - `dotnet build Kriegsspiel.slnx`
-  - `dotnet test Kriegsspiel.Core.Tests/Kriegsspiel.Core.Tests.csproj --filter Fs005ScaleContentTests` (или `dotnet test Kriegsspiel.slnx`)
-  - Утверждения: сценарий `Content/scenarios/fs005_scale_demo.json` успешно загружается (`ContentLoader` не сообщает ошибок валидации); выполняется ориентир масштаба FS-005 — `Zones.Count >= 30` или `Units.Count >= 30` (суммарно достаточно для проверки масштабируемости); граф/ссылки консистентны.
-  - Статическая проверка: `grep -n "fs005_scale_demo" docs/projectDocs/structure.md` возвращает запись о новом сценарии; `Content/scenarios/river_line_10x10.json` и другие существующие файлы вне ownership не изменены.
-- **Готово, если:**
-  - [ ] Добавлен валидный demo-сценарий увеличенного масштаба в рамках ownership.
-  - [ ] Автотесты воспроизводимо подтверждают загрузку и критерии масштаба FS-005.
-  - [ ] `docs/projectDocs/structure.md` актуализирован под новый сценарий; существующий контент (включая `river_line_10x10.json`) не изменён.
-  - [ ] Сборка и целевые тесты проходят; файлы вне ownership не изменены.
+## Launch-план (машиночитаемая часть для orchestrator)
 
+```yaml
+base: docs/rules-simplified-mvp@adb8ba4
+plan_branch: docs/arch-mvp-simplified-rules-plan
+wave_branch_pattern: "wave/<N>-<slug>"
+task_branch_pattern: "task/T-XX-<kebab-slug>"
+merge_policy: per-task-after-verified (no batch)
+waves:
+  - id: 5
+    slug: mvp-foundation
+    groups:
+      - [T-30]
+      - [T-31]
+      - [T-32, T-33]
+    merge: "T-30 first; then T-31; then T-32/T-33 in any order"
+    gate_ref: "docs/projectDocs/todo.md#wave-5--сценарий-проверок-волны"
+  - id: 6
+    slug: mvp-core-mechanics
+    depends: [5]
+    groups:
+      - [T-34, T-35, T-36, T-37, T-38, T-39]
+    merge: "any order after all verified"
+    gate_ref: "docs/projectDocs/todo.md#wave-6--сценарий-проверок-волны"
+  - id: 7
+    slug: mvp-integration-and-mode
+    depends: [6]
+    groups:
+      - [T-40]
+      - [T-41, T-42a, T-42b, T-43]
+      - [T-42c]
+    merge: "T-40 first; then G2 any order; T-42c after T-41/T-42a/T-42b/T-43"
+    gate_ref: "docs/projectDocs/todo.md#wave-7--сценарий-проверок-волны"
+  - id: 8
+    slug: mvp-docs-structure
+    depends: [7]
+    owner: docs-maintainer
+    groups:
+      - [T-44]
+    gate_ref: "docs/projectDocs/todo.md#wave-8--сценарий-проверок-волны-docsstructure"
+```
 
+## Принятые трактовки и риски
 
-## Правила интеграции и разрешения конфликтов
-
-1. **После каждой волны:** выполнить `dotnet build Kriegsspiel.slnx` и `dotnet test Kriegsspiel.slnx` (или канонический набор test-проектов волны). Волна считается интегрированной только при успешной сборке и тестах.
-2. **Конфликты файлов:** владелец файла из таблицы задачи имеет приоритет при разрешении конфликта. Изменения вне ownership запрещены; при необходимости — новая зависимость/задача в следующей волне.
-3. **Порядок рискованных изменений:** интеграция конвейера — только `T-20`; интеграция shell/DI/solution — только `T-22`; массовые ренеймы, удаление устаревших записей csproj и обновление `readme.md` — только финальная `T-23`.
-4. **Пересечения, сознательно разведённые по волнам:**
-   - Перенос `JsonSaveStore` из `Console/Commands` в `Console/Persistence` выполняет `T-16`; обновление регистраций/использования — `T-22`.
-   - `Kriegsspiel.slnx`, `Kriegsspiel.Console.csproj` и `Kriegsspiel.Core.Tests.csproj` меняет только `T-22`; `Kriegsspiel.Core.csproj` — только `T-23`.
-   - Ренеймы файлов/папок, созданных или активно меняемых в Wave 0–2 (`Transmition*`, `Reports`/reporting, assessment), выполняются только `T-23`.
-5. **Проверка готовности:** задача закрывается только при выполнении всех пунктов `Готово, если` и прохождении её проверок; интеграционный релиз плана — после успешной финальной проверки `T-23`.
+- **r6 low-наблюдения:** recon не инициирует движение — реализуем буквально (юнит должен уже стоять в смежном узле); параллельные рёбра не поддерживаем (валидация T-32). Это не блокеры.
+- **Legacy frozen:** в Wave 5–7 запрещено менять поведение legacy extended-движка, кроме аддитивного контента и ветвления `ServiceRegistration` по `Engine`. Legacy-тесты должны оставаться зелёными.
+- **AI/LLM:** в MVP не используется; `TD-002` — отдельная задача после приёмки.
+- **Удаление legacy:** `TD-001` — отдельный cleanup после приёмки MVP; в этот план не входит.
+- **Сценарии:** MVP-режим целево поддерживает `test_01`, `crossing_01`, `mvp_01`; остальные legacy-сценарии — `TD-003`.
+- **Блокеры канона:** не выявлены; r6 `passed`. При обнаружении реальной неоднозначности в реализации — эскалация `orchestrator` → `rules-auditor`/`analyst`, без расширения механик.

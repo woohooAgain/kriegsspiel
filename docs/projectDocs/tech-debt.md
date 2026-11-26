@@ -40,4 +40,36 @@
 ```
 
 ## Записи
-(активные `open`/`planned`; на данный момент пусто)
+
+## TD-001 — Удаление legacy extended-движка после приёмки MVP
+- **Статус:** open
+- **Дата:** 2026-11-26
+- **Контекст:** декомпозиция перехода на `docs/gameDocs/rules.md` v0.4 (Wave 5–7, стратегия strangler)
+- **Источник:** `docs/projectDocs/todo.md` (раздел «Стратегия миграции»); `Kriegsspiel.Core/*`, `Kriegsspiel.Console/*`, `Kriegsspiel.AI/*`, `Kriegsspiel.Core.Tests/*`
+- **Описание:** MVP v0.4 реализуется в `Kriegsspiel.Core/Mvp/*` и `Kriegsspiel.Console/Mvp/*` рядом с legacy extended-движком. Legacy остаётся в решении, чтобы каждая task/wave-ветка собиралась и проходила тесты; MVP-режим его не использует.
+- **Риск / почему может выстрелить:** двойная поддержка и риск случайного использования extended-механик (morale/fatigue/contact geometry/ветви/ограничения/режимы движения/пленные/граждане/груз/отложенные потери/слияние `fact key`), рост когнитивной нагрузки и размера решения.
+- **Предлагаемые действия:** после приёмки MVP — отдельный cleanup-план/волна: удалить legacy Core/Console/AI/тесты, обновить `Kriegsspiel.slnx`, `structure.md`, `readme.md`; канон не менять.
+- **Связи:** `docs/gameDocs/rules.md §1–§7`, `docs/projectDocs/todo.md` (T-30–T-44), `TD-002`, `TD-003`
+- **Закрытие (для done/wontfix):** —
+
+## TD-002 — AI/EnemyDoctrine как внешний контроллер под simplified Order
+- **Статус:** open
+- **Дата:** 2026-11-26
+- **Контекст:** декомпозиция MVP v0.4 (Wave 5–7)
+- **Источник:** `Kriegsspiel.AI/*`, `Kriegsspiel.Core/Ai/*`, `Kriegsspiel.Core/Arbitration/EnemyDoctrine.cs`, `Kriegsspiel.Core/Orders/*`
+- **Описание:** `Kriegsspiel.AI` и `EnemyDoctrine` реализуют extended-формат приказа (7 слотов, ветви, ограничения, режимы движения) и не входят в MVP-ядро. Канон §2 допускает внешний контроллер enemy в том же simplified `Order`-формате (Move/Hold/Recon, targetZone, deadline, forbiddenZone).
+- **Риск / почему может выстрелить:** AI/doctrine останутся несовместимы с каноном и будут тянуть extended-механики в новые реализации; при удалении legacy (TD-001) их судьба должна быть решена.
+- **Предлагаемые действия:** после приёмки MVP — отдельный FS/план: либо адаптировать AI/doctrine к simplified `Order` как внешний контроллер, либо архивировать; не добавлять новых механик.
+- **Связи:** `docs/gameDocs/rules.md §2`, `docs/projectDocs/todo.md` (T-41), `TD-001`
+- **Закрытие (для done/wontfix):** —
+
+## TD-003 — MVP-поля для оставшихся legacy-сценариев
+- **Статус:** open
+- **Дата:** 2026-11-26
+- **Контекст:** декомпозиция MVP v0.4 (T-32/T-41)
+- **Источник:** `Content/scenarios/fs005_scale_demo.json`, `Content/scenarios/river_line_10x10.json`, `Kriegsspiel.Core/Mvp/Content/MvpContentLoader.cs`
+- **Описание:** MVP-режим целево поддерживает `test_01`, `crossing_01`, `mvp_01` (явные `hqZone`, `courierPool`, `targetZones`, `courierTimes`). Крупные legacy-сценарии не мигрированы и могут не проходить MVP-валидацию.
+- **Риск / почему может выстрелить:** попытка запустить MVP на `fs005_scale_demo`/`river_line_10x10` даст ошибку валидации; возможна путаница между legacy и MVP-контентом.
+- **Предлагаемые действия:** после приёмки MVP — мигрировать сценарии в MVP-схему или архивировать; не менять канон.
+- **Связи:** `docs/gameDocs/rules.md §1, §2`, `docs/projectDocs/todo.md` (T-32, T-41), `TD-001`
+- **Закрытие (для done/wontfix):** —
