@@ -1,5 +1,6 @@
 using Kriegsspiel.Core.Ai;
 using Kriegsspiel.Core.Content;
+using Kriegsspiel.Core.Contracts;
 using Kriegsspiel.Core.Domain;
 using Kriegsspiel.Core.Reporting;
 
@@ -96,6 +97,28 @@ public class ReportTests
         Assert.Null(reconFail.ReportedOwnStrength);
         Assert.Equal(0, reconFail.ReportedEnemyStrength);
         Assert.Equal(0, noContact.ReportedEnemyStrength);
+    }
+
+    [Fact]
+    public void Contract_CreateWithHonesty_ReturnsV04StrengthFields()
+    {
+        IReportFactory factory = new ReportFactory(new FrictionTable());
+        var source = NewUnit("U1", honesty: 2);
+        var enemies = new[] { NewUnit("E1", 3, 100, Faction.Red) };
+
+        var arrival = factory.CreateWithHonesty(100, 0, source, 1, ReportKind.Arrival);
+        var contact = factory.CreateWithHonesty(
+            100, 0, source, 2, ReportKind.Contact,
+            observedZoneId: "B", observedEnemies: enemies);
+
+        Assert.Equal(112, arrival.ReportedOwnStrength);
+        Assert.Equal(0, arrival.ReportedEnemyStrength);
+        Assert.Equal(3, arrival.Confidence);
+
+        Assert.Equal(112, contact.ReportedOwnStrength);
+        Assert.Equal(88, contact.ReportedEnemyStrength);
+        Assert.Equal("B", contact.ObservedZoneId);
+        Assert.Equal(2, contact.Confidence);
     }
 
     [Fact]
