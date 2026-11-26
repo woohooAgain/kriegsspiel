@@ -21,72 +21,58 @@ public class FogOfWarTests
             new Dictionary<string, string> { ["zoneId"] = zoneId, ["value"] = value });
 
     [Fact]
-    public void Apply_ContradictionLowersConfidenceAndKeepsBothVersions()
+    public void Apply_ContradictionKeepsAllVersionsWithoutChangingConfidence()
     {
         var knowledge = new PlayerKnowledge();
         var updater = new KnowledgeUpdater();
 
-        updater.Apply(knowledge, Claim("S1", "Blue"));
-        updater.Apply(knowledge, Claim("S2", "Red", eventMinute: 105, deliveryMinute: 125));
+        updater.Apply(knowledge, Claim("S1", "Blue", confidence: 2));
+        updater.Apply(knowledge, Claim("S2", "Red", eventMinute: 105, deliveryMinute: 125, confidence: 2));
 
         var claims = knowledge.Facts["fact:owner"];
         Assert.Equal(2, claims.Count);
-        Assert.All(claims, claim => Assert.Equal(1, claim.Confidence));
+        Assert.Equal(2, claims[0].Confidence);
+        Assert.Equal(2, claims[1].Confidence);
         Assert.True(knowledge.Zones["B"].Conflicting);
         Assert.Equal(2, knowledge.Zones["B"].Versions.Count);
         Assert.Equal(KnowledgePresence.Occupied, knowledge.Zones["B"].Presence);
     }
 
     [Fact]
-    public void Apply_ThirdMatchingReportDoesNotRaiseConflictingVersion()
+    public void Apply_SameValueFromDifferentSourcesDoesNotMergeVersions()
     {
         var knowledge = new PlayerKnowledge();
         var updater = new KnowledgeUpdater();
 
-        updater.Apply(knowledge, Claim("S1", "Blue"));
-        updater.Apply(knowledge, Claim("S2", "Red", eventMinute: 105, deliveryMinute: 125));
-        updater.Apply(knowledge, Claim("S3", "Blue", eventMinute: 110, deliveryMinute: 130, confidence: 3));
+        updater.Apply(knowledge, Claim("S1", "Blue", confidence: 2));
+        updater.Apply(knowledge, Claim("S2", "Blue", eventMinute: 101, deliveryMinute: 121, confidence: 3));
 
         var claims = knowledge.Facts["fact:owner"];
         Assert.Equal(2, claims.Count);
-        Assert.All(claims, claim => Assert.Equal(0, claim.Confidence));
-        Assert.True(knowledge.Zones["B"].Conflicting);
+        Assert.Equal(2, claims[0].Confidence);
+        Assert.Equal(3, claims[1].Confidence);
+        Assert.Equal(2, knowledge.Zones["B"].Versions.Count);
+        Assert.False(knowledge.Zones["B"].Conflicting);
     }
 
     [Fact]
-    public void Apply_CrossConfirmationRequiresDifferentSourceOrObservation()
-    {
-        var knowledge = new PlayerKnowledge();
-        var updater = new KnowledgeUpdater();
-
-        updater.Apply(knowledge, Claim("S1", "Blue"));
-        updater.Apply(knowledge, Claim("S1", "Blue", deliveryMinute: 121));
-        Assert.Equal(2, knowledge.Facts["fact:owner"][0].Confidence);
-
-        updater.Apply(knowledge, Claim("S2", "Blue", deliveryMinute: 122));
-        Assert.Equal(3, knowledge.Facts["fact:owner"][0].Confidence);
-
-        updater.Apply(knowledge, Claim("S1", "Blue", eventMinute: 101, deliveryMinute: 123));
-        Assert.Equal(3, knowledge.Facts["fact:owner"][0].Confidence);
-        Assert.Single(knowledge.Facts["fact:owner"]);
-    }
-
-    [Fact]
-    public void Apply_EmptyReportIsDifferentFromNoData()
+    public void Apply_EmptyReportIsDifferentFromNoDataAndKeepsPriorVersions()
     {
         var knowledge = new PlayerKnowledge();
         Assert.False(knowledge.HasZoneData("A"));
         Assert.Equal(KnowledgePresence.NoData, knowledge.Zones.GetValueOrDefault("A")?.Presence ?? KnowledgePresence.NoData);
 
         var updater = new KnowledgeUpdater();
+        updater.Apply(knowledge, Claim("S1", "Red", factKey: "zone:A", zoneId: "A"));
         var empty = Report.Create(
             100, 110, "SCOUT", 3, ReportKind.Recon, "", "zone:A",
-            Faction.Blue, null, new Dictionary<string, string> { ["value"] = KnowledgeClaim.EmptyValue });
+            observedZoneId: "A",
+            facts: new Dictionary<string, string> { ["value"] = KnowledgeClaim.EmptyValue });
         updater.Apply(knowledge, empty);
 
         Assert.True(knowledge.HasZoneData("A"));
         Assert.True(knowledge.Zones["A"].IsEmpty);
-        Assert.Single(knowledge.Zones["A"].Versions);
+        Assert.Equal(2, knowledge.Zones["A"].Versions.Count);
     }
 
     [Fact]
@@ -104,6 +90,21 @@ public class FogOfWarTests
         Assert.Equal(130, knowledge.Zones["B"].DeliveryMinute);
         Assert.Equal(130, knowledge.Zones["B"].LastReportMinute);
         Assert.Equal(130, knowledge.LastUpdatedMinute);
+    }
+
+    [Fact]
+    public void Apply_UsesObservedZoneIdWhenPresent()
+    {
+        var knowledge = new PlayerKnowledge();
+        var updater = new KnowledgeUpdater();
+
+        updater.Apply(knowledge, Report.Create(
+            100, 120, "S1", 2, ReportKind.Contact, "Red", "",
+            observedZoneId: "C", reportedEnemyStrength: 30));
+
+        Assert.True(knowledge.HasZoneData("C"));
+        Assert.Equal(KnowledgePresence.Occupied, knowledge.Zones["C"].Presence);
+        Assert.Single(knowledge.Zones["C"].Versions);
     }
 
     [Fact]

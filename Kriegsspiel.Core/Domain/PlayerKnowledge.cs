@@ -44,7 +44,7 @@ public sealed class ZoneKnowledge
 
     public bool HasData => Presence != KnowledgePresence.NoData;
     public bool IsEmpty => Presence == KnowledgePresence.Empty;
-    public bool Conflicting => Versions.Select(v => v.Value).Distinct().Count() > 1;
+    public bool Conflicting => Versions.Select(v => v.Value).Distinct(StringComparer.Ordinal).Count() > 1;
 
     public bool OccupancyKnown
     {
@@ -95,55 +95,30 @@ public sealed class PlayerKnowledge
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        var zoneId = FactValue(report, "zoneId") ?? FactValue(report, "zone");
+        var zoneId = ZoneId(report);
         var factKey = string.IsNullOrWhiteSpace(report.FactKey)
-            ? (zoneId is null ? "report:" + report.Id : "zone:" + zoneId)
+            ? zoneId is null ? "report:" + report.Id : "zone:" + zoneId
             : report.FactKey;
-        var value = FactValue(report, "value") ?? report.Text;
+        var value = ClaimValue(report);
 
-        if (zoneId is null && factKey.StartsWith("zone:", StringComparison.Ordinal))
-            zoneId = factKey["zone:".Length..];
-
-        if (!Facts.TryGetValue(factKey, out var claims))
+        var claim = new KnowledgeClaim
         {
-            claims = new List<KnowledgeClaim>();
-            Facts[factKey] = claims;
-        }
+            FactKey = factKey,
+            Value = value,
+            Confidence = report.Confidence,
+            DeliveryMinute = report.DeliveryMinute,
+            EventMinute = report.EventMinute,
+            SourceId = report.SourceId
+        };
 
-        var matching = claims.FirstOrDefault(c => string.Equals(c.Value, value, StringComparison.Ordinal));
-        if (matching is not null)
-        {
-            if (!string.Equals(matching.SourceId, report.SourceId, StringComparison.Ordinal))
-                matching.Confidence = Math.Min(3, matching.Confidence + 1);
-            matching.DeliveryMinute = Math.Max(matching.DeliveryMinute, report.DeliveryMinute);
-            matching.EventMinute = report.EventMinute;
-        }
-        else
-        {
-            foreach (var other in claims)
-            {
-                other.Confidence = Math.Max(1, other.Confidence - 1);
-            }
-
-            var isFirstClaim = claims.Count == 0;
-            var newClaim = new KnowledgeClaim
-            {
-                FactKey = factKey,
-                Value = value,
-                Confidence = isFirstClaim ? Math.Clamp(report.Confidence, 0, 3) : Math.Max(1, report.Confidence - 1),
-                DeliveryMinute = report.DeliveryMinute,
-                EventMinute = report.EventMinute,
-                SourceId = report.SourceId
-            };
-            claims.Add(newClaim);
-        }
+        ClaimList(factKey).Add(claim);
 
         if (zoneId is not null)
-            SyncZone(zoneId, claims, report);
+            AppendZone(zoneId, claim, report);
 
         LastUpdatedMinute = LastUpdatedMinute is null
-            ? report.ArrivesAt
-            : Math.Max(LastUpdatedMinute.Value, report.ArrivesAt);
+            ? report.DeliveryMinute
+            : Math.Max(LastUpdatedMinute.Value, report.DeliveryMinute);
     }
 
     public void Apply(IEnumerable<Report> reports)
@@ -153,36 +128,65 @@ public sealed class PlayerKnowledge
             Apply(report);
     }
 
-    public static bool IsConfidenceInRange(int value) => value is >= 0 and <= 3;
+    public static bool IsConfidenceInRange(int value) => value is >= 1 and <= 3;
 
-    private static string? FactValue(Report report, string key) =>
-        report.Facts.TryGetValue(key, out var value) ? value : null;
+    private List<KnowledgeClaim> ClaimList(string factKey)
+    {
+        if (!Facts.TryGetValue(factKey, out var claims))
+        {
+            claims = new List<KnowledgeClaim>();
+            Facts[factKey] = claims;
+        }
+        return claims;
+    }
 
-    private void SyncZone(string zoneId, List<KnowledgeClaim> claims, Report report)
+    private void AppendZone(string zoneId, KnowledgeClaim claim, Report report)
     {
         var zone = GetOrCreate(zoneId);
-        zone.Versions.Clear();
-        zone.Versions.AddRange(claims);
-        zone.Confidence = claims.Count == 0 ? 0 : claims.Max(c => c.Confidence);
-        zone.DeliveryMinute = report.ArrivesAt;
-        zone.LastReportMinute = Math.Max(zone.LastReportMinute, report.ArrivesAt);
-        if (zone.EventMinute is null || report.EventMinute >= zone.EventMinute.Value)
-            zone.EventMinute = report.EventMinute;
+        zone.Versions.Add(claim);
+        zone.Confidence = report.Confidence;
+        zone.DeliveryMinute = report.DeliveryMinute;
+        zone.LastReportMinute = Math.Max(zone.LastReportMinute, report.DeliveryMinute);
+        zone.EventMinute = report.EventMinute;
+        zone.Presence = PresenceFor(report, claim);
 
-        var hasOccupied = claims.Any(c => !c.IsEmptyClaim);
-        zone.Presence = claims.Count == 0
-            ? KnowledgePresence.NoData
-            : hasOccupied ? KnowledgePresence.Occupied : KnowledgePresence.Empty;
-
-        if (!hasOccupied)
+        if (claim.IsEmptyClaim)
         {
             zone.ReportedOwner = null;
             zone.ReportedFaction = null;
             return;
         }
 
-        var primary = claims.First(c => !c.IsEmptyClaim);
-        zone.ReportedOwner = primary.Value;
-        zone.ReportedFaction = Enum.TryParse<Faction>(primary.Value, true, out var faction) ? faction : null;
+        zone.ReportedOwner = claim.Value;
+        zone.ReportedFaction = Enum.TryParse<Faction>(claim.Value, true, out var faction) ? faction : null;
+    }
+
+    private static KnowledgePresence PresenceFor(Report report, KnowledgeClaim claim)
+    {
+        if (claim.IsEmptyClaim)
+            return KnowledgePresence.Empty;
+        if (report.ReportedEnemyStrength is 0 && report.ReportedOwnStrength is null)
+            return KnowledgePresence.Empty;
+        return KnowledgePresence.Occupied;
+    }
+
+    private static string? ZoneId(Report report)
+    {
+        if (!string.IsNullOrWhiteSpace(report.ObservedZoneId))
+            return report.ObservedZoneId;
+        if (report.Facts.TryGetValue("zoneId", out var zoneId) && !string.IsNullOrWhiteSpace(zoneId))
+            return zoneId;
+        if (report.Facts.TryGetValue("zone", out var zone) && !string.IsNullOrWhiteSpace(zone))
+            return zone;
+        return report.FactKey.StartsWith("zone:", StringComparison.Ordinal)
+            ? report.FactKey["zone:".Length..]
+            : null;
+    }
+
+    private static string ClaimValue(Report report)
+    {
+        if (report.Facts.TryGetValue("value", out var value) && !string.IsNullOrEmpty(value))
+            return value;
+        return string.IsNullOrWhiteSpace(report.Text) ? KnowledgeClaim.EmptyValue : report.Text;
     }
 }

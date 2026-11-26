@@ -27,12 +27,15 @@ public static class TestContent
                     Id = "U1",
                     Name = "U1",
                     Type = UnitType.HQ,
+                    Faction = Faction.Blue,
                     Strength = 50,
+                    InitialStrengthSnapshot = 50,
                     Readiness = 80,
                     Morale = 80,
                     Fatigue = 0,
                     Ammo = 100,
                     LocationZoneId = "A",
+                    Posture = Posture.Defend,
                     Traits = new CommanderTraits(1, 1, 1, 1)
                 },
                 new Unit
@@ -40,12 +43,15 @@ public static class TestContent
                     Id = "ENEMY_1",
                     Name = "E1",
                     Type = UnitType.Infantry,
+                    Faction = Faction.Red,
                     Strength = 50,
+                    InitialStrengthSnapshot = 50,
                     Readiness = 80,
                     Morale = 80,
                     Fatigue = 0,
                     Ammo = 100,
                     LocationZoneId = "B",
+                    Posture = Posture.Defend,
                     Traits = new CommanderTraits(1, 1, 1, 0)
                 }
             ],

@@ -5,6 +5,7 @@ namespace Kriegsspiel.Core.Domain;
 public sealed class GameState
 {
     public required string ScenarioId { get; init; }
+    public string? HqZoneId { get; init; }
     public required Clock Clock { get; init; }
     public required Dictionary<string, Zone> Zones { get; init; }
     public required Dictionary<string, Unit> Units { get; init; }

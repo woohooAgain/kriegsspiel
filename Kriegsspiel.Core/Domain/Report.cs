@@ -69,12 +69,15 @@ public sealed class Report
         get => _confidence;
         set
         {
-            if (value < 0 || value > 3) throw new ArgumentOutOfRangeException(nameof(value));
+            if (value is < 1 or > 3) throw new ArgumentOutOfRangeException(nameof(value));
             _confidence = value;
         }
     }
 
     public ReportKind Kind { get; set; }
+    public string? ObservedZoneId { get; set; }
+    public int? ReportedOwnStrength { get; set; }
+    public int? ReportedEnemyStrength { get; set; }
 
     public int EventMinute
     {
@@ -109,7 +112,7 @@ public sealed class Report
         !string.IsNullOrWhiteSpace(FromUnitId) &&
         Minute >= 0 &&
         ArrivesAt >= 0 &&
-        Confidence is >= 0 and <= 3;
+        Confidence is >= 1 and <= 3;
 
     public static Report Create(
         int eventMinute,
@@ -121,7 +124,10 @@ public sealed class Report
         string? factKey = null,
         Faction sourceFaction = Faction.Blue,
         string? reportedBy = null,
-        Dictionary<string, string>? facts = null)
+        Dictionary<string, string>? facts = null,
+        string? observedZoneId = null,
+        int? reportedOwnStrength = null,
+        int? reportedEnemyStrength = null)
     {
         if (string.IsNullOrWhiteSpace(sourceId))
             throw new ArgumentException("A report needs a source.", nameof(sourceId));
@@ -136,7 +142,10 @@ public sealed class Report
             Confidence = confidence,
             FactKey = factKey ?? "",
             SourceFaction = sourceFaction,
-            ReportedBy = reportedBy
+            ReportedBy = reportedBy,
+            ObservedZoneId = observedZoneId,
+            ReportedOwnStrength = reportedOwnStrength,
+            ReportedEnemyStrength = reportedEnemyStrength
         };
 
         if (facts is null) return report;

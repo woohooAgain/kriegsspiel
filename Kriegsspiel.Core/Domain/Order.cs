@@ -71,6 +71,16 @@ public sealed class Order
     public required string ToUnitId { get; init; }
     public OrderIntent Intent { get; init; }
     public string? TargetZoneId { get; init; }
+    public int? Deadline
+    {
+        get => NotLaterThan;
+        init => NotLaterThan = value;
+    }
+    public string? ForbiddenZoneId { get; init; }
+    public string Outcome { get; set; } = "";
+    public int? CreatedMinute { get; init; }
+    public int? SentMinute { get; set; }
+    public int? DeliverAt { get; set; }
     public string? TargetObjectId { get; init; }
     public string? TargetUnitId { get; init; }
     public string? TargetEdgeId { get; init; }
