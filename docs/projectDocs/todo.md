@@ -250,7 +250,7 @@
 - **Что сделать:**
   1. Пул штаба: K курьеров; состояния free/outbound/return/lost; очередь Order/Query; приоритет Query выше Order, далее FIFO по `createdMinute`; отправка при свободном курьере в тик `t`, `sentMinute=t`.
   2. `T_leg` — Дейкстра по `courierTime` от hqZone до узла юнита (на ребре — до `ToZoneId`), минимум 5; `deliverAt=t+T_leg`, `returnAt=t+2*T_leg`; ETA пересчитывается от фактической отправки.
-  3. Потеря курьера: в `sentMinute` `rand()<p_courier_loss` → `CourierLost`, `deliverAt=null`, возврат `sentMinute+2*T_leg+60`; приказ/запрос не доставляется.
+  3. Потеря курьера: в `sentMinute` `rand()<p_courier_loss` → `CourierLost`, `deliverAt=null`, возврат `sentMinute+2*T_leg+60`; приказ/запрос не доставляется. Для AAR: `Order.SentMinute=t`, `Order.DeliverAt=null`, `Order.Status=FailedRejected`; неотправленный до `EndMinute` приказ — `SentMinute=null`, `DeliverAt=null`.
   4. Query: в `deliverAt` живой юнит формирует `QueryReply` (событие/Report через T-33); `deliveryMinute=deliverAt+T_leg_back` (если не потеряно донесение); `expectedReplyAt=deliverAt+T_leg_back+15`; если ответа нет — `SilenceDetected(unitId,minute)`; при потере курьера — `sentMinute+2*T_leg+30`.
   5. Тесты: FIFO/приоритет, занятые курьеры, ETA от фактической отправки, потеря/возврат, query reply/silence, min 5.
 - **Как проверить:**
@@ -303,9 +303,9 @@
   - Не трогать другие файлы.
 - **Зависимости:** `T-30`, `T-31`; использует контракты `IMvpOrderInterpreter`/`IMvpReconResolver`/`IMvpReportFactory` (реализации T-35/T-38 не блокируют параллельный запуск; в тестах — стабы).
 - **Что сделать:**
-  1. Начало движения: из узла в ребро `EdgeLocation{RemainingMinutes=travelTime}`; каждый 1-мин тик уменьшать `RemainingMinutes`; при 0 — завершение, offroad `Readiness = max(0, Readiness-5)`, прибытие в `ToZoneId`.
+  1. Начало движения: из узла в ребро `EdgeLocation{RemainingMinutes=travelTime}`; каждый 1-мин тик уменьшать `RemainingMinutes`; при 0 — завершение, offroad `Readiness = max(0, Readiness-5)`, прибытие в `ToZoneId`; обновлять `Unit.LastMovedMinute` (для отдыха T-40).
   2. Немедленный переход на следующее ребро маршрута в тот же тик; `RemainingMinutes` нового ребра в этом тике **не** уменьшается; фактическое время всегда `travelTime` (не `*0.8`).
-  3. Позы: на ребре — March; вход в узел с enemy → Attack; завершённый move в свободный target → Defense + `EffectiveOrder.Intent=Hold` с целью v; hold/recon не начинают движение; recon наблюдает из текущего узла.
+  3. Позы: на ребре — March; вход в узел с enemy → Attack; завершённый move в свободный target → Defense + `EffectiveOrder.Intent=Hold` с целью v; hold/recon не начинают движение; recon наблюдает из текущего узла. При достижении target/hold установить `Order.Status=Executed` (для AAR T-39).
   4. Проверка обнаружения после движения/прибытия — через `IMvpReconResolver` (каденция §6); deadline expiry — через `IMvpOrderInterpreter`/контракт; pendingOrder — применить на завершении ребра.
   5. Не телепортировать; не двигать hold/recon; не уменьшать readiness на road; offroad только -5.
   6. Тесты: multi-hop, немедленный переход, no-decrement нового ребра, offroad, posture, deadline, pendingOrder, no teleport.
@@ -332,7 +332,7 @@
 - **Что сделать:**
   1. Бой только на `t%30==0`, в каждом узле с юнитами обеих сторон `Strength>0`; recon из соседнего узла не участвует; юниты на рёбрах не участвуют.
   2. `Power = Strength * Readiness/100 * PostureMult * TerrainMult * AmmoMult`; Posture March 0.5/Attack 1.0/Defense 1.3; Terrain `1+0.1*DefenseBonus` только при Defense; Ammo 1.0 при >0, 0.5 при 0.
-  3. Если `PowerPlayer+PowerEnemy>0`: одновременные потери для каждого юнита `0.25 * PowerEnemy/(sum) * Strength`; `Ammo=max(0,Ammo-1)`, `Readiness=max(0,Readiness-10)`; `Strength==0` → удалить.
+  3. Если `PowerPlayer+PowerEnemy>0`: одновременные потери для каждого юнита `0.25 * PowerEnemy/(sum) * Strength`; `Ammo=max(0,Ammo-1)`, `Readiness=max(0,Readiness-10)`; `Strength==0` → удалить; обновлять `Unit.LastFoughtMinute` (для отдыха T-40).
   4. Отступление: выживший с `Strength < 0.30*InitialStrength` → смежный узел без противника с минимальным `travelTime`, `EffectiveOrder=null`; если свободных нет — уничтожить.
   5. Contact при начале боя (confidence 2) — через `IMvpReportFactory`/T-38; не создавать extended-отчёты.
   6. Тесты: формулы, terrain только defense, ammo 0, одновременность, удаление, отход/уничтожение, recon не в бою.
