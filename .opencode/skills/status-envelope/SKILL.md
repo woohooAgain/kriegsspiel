@@ -10,7 +10,7 @@ description: Use when reporting to the orchestrator or writing handoffs in a Kri
 ## Формат
 ```
 ROLE=<role> | TARGET=<T-XX|Wave N|FS-*|PI-*|gate|...> | STATUS=<...> | ROUND=<n|n/a>
-ARTIFACTS=<paths/branch/MR/commit refs>
+ARTIFACTS=<paths/worktree/branch/commit/MR refs>
 NEXT=<следующий агент/действие или none>
 BLOCKERS=<none|кратко>
 SUMMARY=<1-3 короткие строки фактов/вердикта>
@@ -18,7 +18,7 @@ SUMMARY=<1-3 короткие строки фактов/вердикта>
 
 ## Правила
 - `STATUS` — только из словаря роли (ниже); не вводить новые значения молча.
-- `ARTIFACTS` — refs (путь/ветка/MR/коммит), не содержимое.
+- `ARTIFACTS` — refs (путь/worktree/ветка/MR/коммит), не содержимое. Для коммитящих запусков обязательны `worktree=<path>` и `branch=<own-branch>@<commit>` (`process-contract` §5.1).
 - На доработках — дельта относительно прошлого раунда.
 - Полные логи/диффы/копипасты/длинные списки замечаний запрещены.
 
@@ -37,7 +37,7 @@ SUMMARY=<1-3 короткие строки фактов/вердикта>
 ## Примеры
 ```
 ROLE=implementer | TARGET=T-24 | STATUS=ready_for_verifier | ROUND=2
-ARTIFACTS=task/T-24-scalable-knowledge-map@9f6c82a; docs/projectDocs/reports/handoffs/implementer-T-24-r2.md
+ARTIFACTS=worktree=/tmp/opencode/ks-implementer-T-24-r2; branch=task/T-24-scalable-knowledge-map@9f6c82a; docs/projectDocs/reports/handoffs/implementer-T-24-r2.md
 NEXT=verifier | BLOCKERS=none
 SUMMARY=Fixed menu filter reset; build/test green.
 ```

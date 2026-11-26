@@ -11,7 +11,8 @@ description: Use when passing work between roles or writing implementer/scenario
 - **Handoff `implementer`:** `docs/projectDocs/reports/handoffs/implementer-T-XX-r<N>.md` (раунд `N`).
 - **Другие роли:** `docs/projectDocs/reports/handoffs/<role>-<target>-r<N>.md` по договорённости.
 - **Локальный scratch:** `docs/projectDocs/reports/.tmp/<...>.md` — gitignored, не транспорт; не единственный источник для `verifier`.
-- Handoff коммитится в ветке задачи/волны при необходимости доступности и трассируемости; он не заменяет канонический `task-*`/`wave-*` отчёт.
+- Handoff коммитится в собственной ветке запуска (worktree) при необходимости доступности и трассируемости; он не заменяет канонический `task-*`/`wave-*` отчёт.
+- Ref handoff всегда называет `worktree` и `branch@commit` запуска (см. `process-contract` §5.1); потребитель читает артефакт по этому ref, не переключая HEAD общего каталога.
 
 ## Минимальная структура handoff (implementer)
 - Раунд `N`, ветка/коммит/MR, target.
