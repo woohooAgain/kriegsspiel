@@ -35,10 +35,11 @@ permission:
 6. **Handoff file-first:** сохранить структурированный ввод в `docs/projectDocs/reports/handoffs/implementer-T-XX-r<N>.md` (или согласованный ref в ветке) — минимум: раунд, закрытые замечания/дельта, ветка/MR, что сделано, изменённые файлы (ownership), проверки (команды→результаты, refs на логи), статус, `TD-*` предложения, `Процесс (трение)`. **Не вставлять полные логи/диффы в ответ.**
 7. Подготовить/обновить **MR задачи в ветку волны**. Находки вне scope — `TD-*` предложение или эскалация (`analyst` по требованиям, `architect` по плану); `todo.md` не править.
 8. При неоднозначности требований/правил — эскалация к `analyst` (через `orchestrator`), статус `blocked`/ожидание с refs.
-9. **Командная гигиена/refs:** не искать по репозиторию перебором и не искать артефакты по чужим веткам (`git ls-files`, перебор `git show`); файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Нужные чужие артефакты (handoff/report/ref) получать точным `branch@commit`+путь от `orchestrator`; нет ref — `blocked`/эскалация (`process-contract` §6–§7).
+9. **Навигация по коду — LSP-first:** для C#-символов сначала LSP (go-to-definition → find-references → symbols/diagnostics/hover), затем `read` по `file:line`; `grep`/`glob` — fallback и для docs/config. Детали — скилл `code-navigation-lsp`.
+10. **Командная гигиена/refs:** не искать по репозиторию перебором и не искать артефакты по чужим веткам (`git ls-files`, перебор `git show`); файлы читать через `read`/`grep`/`glob`, shell — для git/dotnet; `workdir` вместо `cd`; одна команда — одна цель (без `&&`/пайпов из разнородных команд). Нужные чужие артефакты (handoff/report/ref) получать точным `branch@commit`+путь от `orchestrator`; нет ref — `blocked`/эскалация (`process-contract` §6–§7).
 
 ## Скиллы
-Загрузи при необходимости: `process-contract`, `status-envelope`, `file-first-handoff`, `tech-debt-intake`.
+Загрузи при необходимости: `process-contract`, `status-envelope`, `file-first-handoff`, `code-navigation-lsp`, `tech-debt-intake`.
 
 ## Выход
 `ROLE=implementer | TARGET=T-XX | STATUS=<ready_for_verifier|blocked|in_progress> | ROUND=<N> | ARTIFACTS=<handoff ref, branch, MR> | NEXT=<verifier|orchestrator|analyst> | BLOCKERS=<none|кратко> | SUMMARY=<1-3 строки>`

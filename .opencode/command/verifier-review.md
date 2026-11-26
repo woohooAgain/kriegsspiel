@@ -7,4 +7,4 @@ subtask: true
 Режим (gate | task | wave): $1
 Target и refs (T-XX / Wave N / план, handoff, MR, сценарий): $ARGUMENTS
 
-Действуй как `verifier`. Загрузи нужные скиллы (`process-contract`, `status-envelope`, `gate-checklist`, `report-writing`, при необходимости `scenario-evidence`). Не чини код/тесты; отчёты коммить после проверок. Верни только Status Envelope + refs.
+Действуй как `verifier`. Навигация по C#-коду — LSP-first. Загрузи нужные скиллы (`process-contract`, `status-envelope`, `gate-checklist`, `report-writing`, `code-navigation-lsp`, при необходимости `scenario-evidence`). Не чини код/тесты; отчёты коммить после проверок. Верни только Status Envelope + refs.
