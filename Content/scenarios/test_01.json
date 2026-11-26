@@ -4,73 +4,48 @@
   "startMinute": 360,
   "endMinute": 480,
   "seed": 2001,
-  "victoryThreshold": 0.7,
+  "hqZone": "START",
+  "winThreshold": 0.7,
+  "courierPool": {
+    "count": 2,
+    "courierLossProbability": 0.05,
+    "reportLossProbability": 0.03
+  },
   "zones": [
     {
       "id": "START",
       "name": "Исходный рубеж",
       "terrain": "Open",
       "travelMinutes": { "OBJ": 30 },
+      "courierTimes": { "OBJ": 10 },
       "edgeTypes": { "OBJ": "Road" },
       "defenseBonus": 0,
-      "observation": 2,
-      "controllingFaction": "Blue",
-      "cover": 0.1,
-      "objects": [],
-      "cargo": []
+      "observability": 2
     },
     {
       "id": "OBJ",
       "name": "Высота 4.2",
       "terrain": "Open",
       "travelMinutes": { "START": 30 },
+      "courierTimes": { "START": 10 },
       "edgeTypes": { "START": "Road" },
       "defenseBonus": 1,
-      "observation": 2,
-      "controllingFaction": "Red",
-      "cover": 0.2,
-      "objects": [
-        { "id": "OP_OBJ", "kind": "ObservationPost", "name": "НП" }
-      ],
-      "cargo": []
+      "observability": 2
     }
   ],
   "units": [
-    {
-      "id": "HQ",
-      "name": "Штаб",
-      "type": "HQ",
-      "faction": "Blue",
-      "strength": 5,
-      "initialStrengthSnapshot": 5,
-      "readiness": 100,
-      "morale": 100,
-      "fatigue": 0,
-      "ammo": 0,
-      "training": 3,
-      "experience": 2,
-      "locationZoneId": "START",
-      "posture": "Reserve",
-      "speedKmh": 6,
-      "traits": { "initiative": 1, "caution": 1, "literalism": 1, "reportHonesty": 3, "professionalism": 3 }
-    },
     {
       "id": "1IR",
       "name": "1-й батальон",
       "type": "Infantry",
       "faction": "Blue",
       "strength": 50,
-      "initialStrengthSnapshot": 50,
+      "initialStrength": 50,
       "readiness": 80,
-      "morale": 80,
-      "fatigue": 0,
       "ammo": 100,
-      "training": 2,
-      "experience": 2,
-      "locationZoneId": "START",
-      "posture": "Reserve",
-      "speedKmh": 4,
-      "traits": { "initiative": 1, "caution": 1, "literalism": 2, "reportHonesty": 2, "professionalism": 2 }
+      "zoneId": "START",
+      "posture": "defense",
+      "traits": { "init": 1, "pedantry": 2, "honesty": 2 }
     },
     {
       "id": "ENEMY_1",
@@ -78,20 +53,15 @@
       "type": "Infantry",
       "faction": "Red",
       "strength": 20,
-      "initialStrengthSnapshot": 20,
+      "initialStrength": 20,
       "readiness": 70,
-      "morale": 70,
-      "fatigue": 0,
       "ammo": 80,
-      "training": 2,
-      "experience": 1,
-      "locationZoneId": "OBJ",
-      "posture": "Defend",
-      "speedKmh": 4,
-      "traits": { "initiative": 0, "caution": 2, "literalism": 1, "reportHonesty": 0, "professionalism": 1 }
+      "zoneId": "OBJ",
+      "posture": "defense",
+      "traits": { "init": 0, "pedantry": 1, "honesty": 0 }
     }
   ],
   "objectives": [
-    { "type": "HoldZone", "zone": "OBJ", "untilMinute": 480, "controlMinutes": [420, 480], "weight": 1.0 }
+    { "type": "HoldZone", "zone": "OBJ", "weight": 1.0 }
   ]
 }

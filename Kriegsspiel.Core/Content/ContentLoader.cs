@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Kriegsspiel.Core.Domain;
 
@@ -23,10 +24,9 @@ public sealed class ContentLoader
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip
     };
 
-    private static readonly HashSet<string> EdgeTypes = new(StringComparer.OrdinalIgnoreCase) { "Road", "Offroad", "Crossing" };
-    private static readonly HashSet<string> ZoneObjectKinds = new(StringComparer.OrdinalIgnoreCase) { "Bridge", "Fortification", "ObservationPost", "Depot" };
-    private static readonly HashSet<string> CargoTypes = new(StringComparer.OrdinalIgnoreCase) { "Ammo", "Supplies" };
-    private static readonly HashSet<string> Factions = new(StringComparer.OrdinalIgnoreCase) { "Blue", "Red", "Neutral" };
+    private static readonly HashSet<string> EdgeTypes = new(StringComparer.OrdinalIgnoreCase) { "Road", "Offroad" };
+    private static readonly HashSet<string> Factions = new(StringComparer.OrdinalIgnoreCase) { "Blue", "Red" };
+    private static readonly HashSet<string> Postures = new(StringComparer.OrdinalIgnoreCase) { "March", "Defend", "Attack" };
     private static readonly HashSet<string> ControlStates = new(StringComparer.OrdinalIgnoreCase) { "Achieved", "Contested", "Failed" };
     private static readonly HashSet<string> PMinModifierTypes = new(StringComparer.OrdinalIgnoreCase) { "Additive", "Multiplicative" };
 
@@ -36,15 +36,17 @@ public sealed class ContentLoader
         var frictionText = ReadRequiredFile(frictionPath, "friction");
         var reportsText = ReadRequiredFile(reportsPath, "reports");
 
-        var scenarioRaw = ParseJson(scenarioPath, scenarioText);
+        var normalizedScenario = NormalizeScenarioJson(scenarioPath, scenarioText);
+        var scenarioRaw = ParseJson(scenarioPath, normalizedScenario);
         var frictionRaw = ParseJson(frictionPath, frictionText);
         var reportsRaw = ParseJson(reportsPath, reportsText);
 
-        var scenario = Deserialize<Scenario>(scenarioPath, scenarioText, "scenario");
+        var scenario = Deserialize<Scenario>(scenarioPath, normalizedScenario, "scenario");
         var friction = Deserialize<FrictionTable>(frictionPath, frictionText, "friction");
         var reports = Deserialize<ReportTemplates>(reportsPath, reportsText, "reports");
 
-        ValidateScenario(scenario, scenarioRaw);
+        ApplyScenarioDefaults(scenario);
+        ValidateScenario(scenario);
         ValidateFriction(friction);
         ValidateReports(reports);
 
@@ -101,7 +103,95 @@ public sealed class ContentLoader
         }
     }
 
-    private static void ValidateScenario(Scenario scenario, JsonElement raw)
+    private static string NormalizeScenarioJson(string path, string text)
+    {
+        JsonNode? node;
+        try
+        {
+            node = JsonNode.Parse(text, documentOptions: new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
+            });
+        }
+        catch (JsonException ex)
+        {
+            throw new ContentValidationException($"Invalid JSON in '{path}': {ex.Message}");
+        }
+
+        if (node is not JsonObject root)
+            return text;
+
+        if (root["courierPool"] is JsonObject pool)
+        {
+            MoveIfMissing(pool, "count", root, "courierCount");
+            MoveIfMissing(pool, "courierLossProbability", root, "courierLossProbability");
+            MoveIfMissing(pool, "reportLossProbability", root, "reportLossProbability");
+        }
+
+        if (root["zones"] is JsonArray zones)
+        {
+            foreach (var zone in zones.OfType<JsonObject>())
+            {
+                Move(zone, "observability", "observation");
+                Move(zone, "courierTimes", "courierMinutes");
+            }
+        }
+
+        if (root["units"] is JsonArray units)
+        {
+            foreach (var unit in units.OfType<JsonObject>())
+            {
+                Move(unit, "zoneId", "locationZoneId");
+                Move(unit, "initialStrength", "initialStrengthSnapshot");
+                if (unit["posture"] is JsonValue postureValue && postureValue.TryGetValue<string>(out var posture))
+                    unit["posture"] = NormalizePosture(posture);
+                if (unit["traits"] is JsonObject traits)
+                {
+                    Move(traits, "init", "initiative");
+                    Move(traits, "pedantry", "literalism");
+                    Move(traits, "honesty", "reportHonesty");
+                }
+            }
+        }
+
+        return root.ToJsonString();
+    }
+
+    private static void MoveIfMissing(JsonObject source, string from, JsonObject target, string to)
+    {
+        if (!target.ContainsKey(to) && source[from] is { } value)
+            target[to] = value.DeepClone();
+    }
+
+    private static void Move(JsonObject source, string from, string to)
+    {
+        if (!source.ContainsKey(to) && source[from] is { } value)
+            source[to] = value.DeepClone();
+        source.Remove(from);
+    }
+
+    private static string NormalizePosture(string posture) => posture.ToLowerInvariant() switch
+    {
+        "defense" or "defend" => "Defend",
+        "march" => "March",
+        "attack" => "Attack",
+        _ => posture
+    };
+
+    private static void ApplyScenarioDefaults(Scenario scenario)
+    {
+        scenario.VictoryThreshold = scenario.WinThreshold;
+
+        var hq = scenario.Units.FirstOrDefault(u => u.Type == UnitType.HQ && u.Faction == Faction.Blue);
+        if (hq is not null)
+        {
+            scenario.HqZoneId ??= hq.LocationZoneId;
+            scenario.Units.RemoveAll(u => u.Type == UnitType.HQ);
+        }
+    }
+
+    private static void ValidateScenario(Scenario scenario)
     {
         if (string.IsNullOrWhiteSpace(scenario.Id))
             throw new ContentValidationException("Scenario id is required.");
@@ -111,10 +201,22 @@ public sealed class ContentLoader
             throw new ContentValidationException($"Scenario '{scenario.Id}': startMinute must be >= 0.");
         if (scenario.EndMinute <= scenario.StartMinute)
             throw new ContentValidationException($"Scenario '{scenario.Id}': endMinute must be greater than startMinute.");
-        if (scenario.Seed.HasValue && scenario.Seed.Value < 0)
+        if (scenario.EndMinute % 30 != 0)
+            throw new ContentValidationException($"Scenario '{scenario.Id}': endMinute must be a multiple of 30.");
+        if (!scenario.Seed.HasValue)
+            throw new ContentValidationException($"Scenario '{scenario.Id}': seed is required.");
+        if (scenario.Seed.Value < 0)
             throw new ContentValidationException($"Scenario '{scenario.Id}': seed must be >= 0.");
-        if (!IsProbability(scenario.VictoryThreshold) || scenario.VictoryThreshold <= 0 || scenario.VictoryThreshold >= 1)
-            throw new ContentValidationException($"Scenario '{scenario.Id}': victoryThreshold must be in (0,1).");
+        if (!IsProbability(scenario.WinThreshold) || scenario.WinThreshold <= 0)
+            throw new ContentValidationException($"Scenario '{scenario.Id}': winThreshold must be in (0,1].");
+        if (scenario.CourierCount < 1)
+            throw new ContentValidationException($"Scenario '{scenario.Id}': courierPool.count must be >= 1.");
+        if (!IsProbability(scenario.CourierLossProbability))
+            throw new ContentValidationException($"Scenario '{scenario.Id}': courierPool.courierLossProbability must be in [0,1] (actual {FormatDouble(scenario.CourierLossProbability)}).");
+        if (!IsProbability(scenario.ReportLossProbability))
+            throw new ContentValidationException($"Scenario '{scenario.Id}': courierPool.reportLossProbability must be in [0,1] (actual {FormatDouble(scenario.ReportLossProbability)}).");
+        if (string.IsNullOrWhiteSpace(scenario.HqZoneId))
+            throw new ContentValidationException($"Scenario '{scenario.Id}': hqZone is required.");
         if (scenario.Zones.Count == 0)
             throw new ContentValidationException($"Scenario '{scenario.Id}': at least one zone is required.");
         if (scenario.Units.Count == 0)
@@ -124,15 +226,19 @@ public sealed class ContentLoader
 
         var zoneIds = EnsureUniqueIds(scenario.Zones.Select(z => z.Id), "zone", $"scenario '{scenario.Id}'");
         var unitIds = EnsureUniqueIds(scenario.Units.Select(u => u.Id), "unit", $"scenario '{scenario.Id}'");
-        ValidateZones(scenario, raw, zoneIds);
-        ValidateUnits(scenario, raw, zoneIds, unitIds);
+
+        if (!zoneIds.Contains(scenario.HqZoneId))
+            throw new ContentValidationException($"Scenario '{scenario.Id}': hqZone references unknown zone '{scenario.HqZoneId}'.");
+
+        ValidateZones(scenario, zoneIds);
+        ValidateUnits(scenario, zoneIds);
         ValidateObjectives(scenario, zoneIds, unitIds);
+        ValidateConnectivity(scenario, zoneIds);
     }
 
-    private static void ValidateZones(Scenario scenario, JsonElement raw, HashSet<string> zoneIds)
+    private static void ValidateZones(Scenario scenario, HashSet<string> zoneIds)
     {
-        var zoneRawMap = BuildRawMap(raw, "zones");
-        var objectIds = new HashSet<string>(StringComparer.Ordinal);
+        var zoneMap = scenario.Zones.ToDictionary(z => z.Id, StringComparer.Ordinal);
 
         foreach (var zone in scenario.Zones)
         {
@@ -140,89 +246,85 @@ public sealed class ContentLoader
                 throw new ContentValidationException($"Scenario '{scenario.Id}': zone id is required.");
             if (string.IsNullOrWhiteSpace(zone.Name))
                 throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' name is required.");
-            if (zone.Observation < 0)
-                throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' observation must be >= 0.");
-            if (zone.FortificationLevel < 0)
-                throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' fortificationLevel must be >= 0.");
+            if (zone.DefenseBonus is < 0 or > 2)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' defenseBonus must be in [0,2].");
+            if (zone.Observation is < 1 or > 3)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' observability must be in [1,3].");
 
             foreach (var (neighbor, minutes) in zone.TravelMinutes)
             {
+                if (neighbor == zone.Id)
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' cannot reference itself in travelMinutes.");
                 if (!zoneIds.Contains(neighbor))
                     throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' references unknown neighbor '{neighbor}'.");
                 if (minutes <= 0)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' travelMinutes to '{neighbor}' must be > 0.");
-                if (neighbor == zone.Id)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' cannot reference itself in travelMinutes.");
-            }
-
-            if (zoneRawMap.TryGetValue(zone.Id, out var zr))
-            {
-                ValidateZoneEdgeTypes(scenario.Id, zone, zr, zoneIds);
-                ValidateZoneObjects(scenario.Id, zone.Id, zr, objectIds);
-                ValidateZoneCargo(scenario.Id, zone.Id, zr);
-                ValidateZoneControllingFactionAndCover(scenario.Id, zone.Id, zr);
-            }
-            else
-            {
-                ValidateZoneEdgesSymmetryFromModel(scenario, zone);
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' travelTime to '{neighbor}' must be > 0.");
+                if (!zone.CourierMinutes.TryGetValue(neighbor, out var courierMinutes))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' courierTime to '{neighbor}' is required.");
+                if (courierMinutes <= 0)
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' courierTime to '{neighbor}' must be > 0.");
+                if (!zone.EdgeTypes.TryGetValue(neighbor, out var edgeType))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' edge type to '{neighbor}' is required.");
+                if (edgeType is not (EdgeType.Road or EdgeType.Offroad))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' edge type to '{neighbor}' must be road or offroad.");
             }
         }
 
-        ValidateEdgeSymmetryFromModel(scenario);
-        ValidateEdgeTypesSymmetryFromRaw(scenario, zoneRawMap);
+        foreach (var zone in scenario.Zones)
+        {
+            foreach (var (neighbor, minutes) in zone.TravelMinutes)
+            {
+                if (!zoneMap.TryGetValue(neighbor, out var other))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' references unknown neighbor '{neighbor}'.");
+                if (!other.TravelMinutes.TryGetValue(zone.Id, out var backMinutes))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' -> '{neighbor}' is not symmetric (missing reverse edge).");
+                if (backMinutes != minutes)
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' <-> '{neighbor}' has asymmetric travelTime ({minutes} != {backMinutes}).");
+                if (!other.CourierMinutes.TryGetValue(zone.Id, out var backCourier))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' -> '{neighbor}' is not symmetric (missing reverse courierTime).");
+                if (backCourier != zone.CourierMinutes[neighbor])
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' <-> '{neighbor}' has asymmetric courierTime.");
+                if (!other.EdgeTypes.TryGetValue(zone.Id, out var backType))
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' -> '{neighbor}' is not symmetric (missing reverse edge type).");
+                if (backType != zone.EdgeTypes[neighbor])
+                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' <-> '{neighbor}' has asymmetric edge type.");
+            }
+        }
     }
 
-    private static void ValidateUnits(Scenario scenario, JsonElement raw, HashSet<string> zoneIds, HashSet<string> unitIds)
+    private static void ValidateUnits(Scenario scenario, HashSet<string> zoneIds)
     {
-        var unitRawMap = BuildRawMap(raw, "units");
         foreach (var unit in scenario.Units)
         {
             if (string.IsNullOrWhiteSpace(unit.Id))
                 throw new ContentValidationException($"Scenario '{scenario.Id}': unit id is required.");
             if (string.IsNullOrWhiteSpace(unit.Name))
                 throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' name is required.");
+            if (unit.Faction is not (Faction.Blue or Faction.Red))
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' faction must be Blue or Red.");
             if (string.IsNullOrWhiteSpace(unit.LocationZoneId) || !zoneIds.Contains(unit.LocationZoneId))
-                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' has unknown locationZoneId '{unit.LocationZoneId}'.");
-            if (unit.Strength < 0 || unit.Readiness < 0 || unit.Morale < 0 || unit.Fatigue < 0 || unit.Ammo < 0)
-                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' numeric state values must be >= 0.");
-            if (unit.SpeedKmh <= 0)
-                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' speedKmh must be > 0.");
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' has unknown zoneId '{unit.LocationZoneId}'.");
+            if (unit.InitialStrengthSnapshot <= 0)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' initialStrength must be > 0.");
+            if (unit.Strength <= 0)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' initialStrength must be > 0.");
+            if (unit.Readiness is < 0 or > 100)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' readiness must be in [0,100].");
+            if (unit.Ammo < 0)
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' ammo must be >= 0.");
+            if (!Postures.Contains(unit.Posture.ToString()))
+                throw new ContentValidationException($"Scenario '{scenario.Id}': unit '{unit.Id}' posture must be defense, march or attack.");
             ValidateTraits(scenario.Id, unit.Id, unit.Traits);
-
-            if (unitRawMap.TryGetValue(unit.Id, out var ur))
-            {
-                if (TryGetPropertyIgnoreCase(ur, "faction", out var faction) && faction.ValueKind == JsonValueKind.String)
-                    ValidateEnumString(faction.GetString(), Factions, $"Scenario '{scenario.Id}': unit '{unit.Id}' faction");
-                ValidateNonNegativeIntField(ur, "initialStrengthSnapshot", $"Scenario '{scenario.Id}': unit '{unit.Id}' initialStrengthSnapshot");
-                ValidateNonNegativeIntField(ur, "training", $"Scenario '{scenario.Id}': unit '{unit.Id}' training");
-                ValidateNonNegativeIntField(ur, "experience", $"Scenario '{scenario.Id}': unit '{unit.Id}' experience");
-                ValidateNonNegativeIntField(ur, "orderVersion", $"Scenario '{scenario.Id}': unit '{unit.Id}' orderVersion");
-            }
         }
     }
 
-    private static void ValidateTraits(string scenarioId, string unitId, Domain.CommanderTraits traits)
+    private static void ValidateTraits(string scenarioId, string unitId, CommanderTraits traits)
     {
         if (traits is null)
             throw new ContentValidationException($"Scenario '{scenarioId}': unit '{unitId}' traits are required.");
-        ValidateTraitRange(traits.Initiative, "initiative", scenarioId, unitId);
-        ValidateTraitRange(traits.Caution, "caution", scenarioId, unitId);
-        ValidateTraitRange(traits.Literalism, "literalism", scenarioId, unitId);
-        ValidateTraitRange(traits.ReportHonesty, "reportHonesty", scenarioId, unitId);
-        if (TryGetProfessionalism(traits, out var professionalism))
-            ValidateTraitRange(professionalism, "professionalism", scenarioId, unitId);
-    }
-
-    private static bool TryGetProfessionalism(Domain.CommanderTraits traits, out int value)
-    {
-        var prop = traits.GetType().GetProperty("Professionalism");
-        if (prop is not null && prop.PropertyType == typeof(int))
-        {
-            value = (int)(prop.GetValue(traits) ?? 1);
-            return true;
-        }
-        value = 1;
-        return false;
+        ValidateTraitRange(traits.Init, "init", scenarioId, unitId);
+        ValidateTraitRange(traits.Pedantry, "pedantry", scenarioId, unitId);
+        ValidateTraitRange(traits.Honesty, "honesty", scenarioId, unitId);
     }
 
     private static void ValidateTraitRange(int value, string name, string scenarioId, string unitId)
@@ -245,12 +347,6 @@ public sealed class ContentLoader
                 if (minute < scenario.StartMinute || minute > scenario.EndMinute)
                     throw new ContentValidationException($"Scenario '{scenario.Id}': objective control minute {minute} must be within scenario bounds.");
             }
-            if (objective.UntilMinute.HasValue && (objective.UntilMinute.Value < scenario.StartMinute || objective.UntilMinute.Value > scenario.EndMinute))
-                throw new ContentValidationException($"Scenario '{scenario.Id}': objective untilMinute must be within scenario bounds.");
-            if (objective.MinPercent.HasValue && (objective.MinPercent.Value < 0 || objective.MinPercent.Value > 100))
-                throw new ContentValidationException($"Scenario '{scenario.Id}': objective minPercent must be in [0,100].");
-            if (objective.Minutes.HasValue && objective.Minutes.Value <= 0)
-                throw new ContentValidationException($"Scenario '{scenario.Id}': objective minutes must be > 0.");
             if (!string.IsNullOrWhiteSpace(objective.TargetFaction))
                 ValidateEnumString(objective.TargetFaction, Factions, $"Scenario '{scenario.Id}': objective targetFaction");
             if (objective.ControlStateWeights.Count > 0)
@@ -262,8 +358,6 @@ public sealed class ContentLoader
                         throw new ContentValidationException($"Scenario '{scenario.Id}': objective control state weight for '{state}' must be in [0,1].");
                 }
             }
-            if (objective.VictoryThreshold != 0 && (!IsProbability(objective.VictoryThreshold) || objective.VictoryThreshold <= 0 || objective.VictoryThreshold >= 1))
-                throw new ContentValidationException($"Scenario '{scenario.Id}': objective victoryThreshold must be in (0,1) when specified.");
         }
 
         if (!AreClose(weightSum, 1.0))
@@ -286,8 +380,6 @@ public sealed class ContentLoader
                     RequireZoneRef(scenarioId, objective.Zone, zoneIds, objective.Type.ToString());
                 break;
             case ObjectiveType.DisableEnemyStrength:
-                if (!string.IsNullOrWhiteSpace(objective.TargetFaction))
-                    ValidateEnumString(objective.TargetFaction, Factions, $"Scenario '{scenarioId}': objective targetFaction");
                 break;
             case ObjectiveType.EvacuateCivilians:
             case ObjectiveType.BlockEvacuation:
@@ -296,6 +388,34 @@ public sealed class ContentLoader
                     RequireZoneRef(scenarioId, objective.SafeZone, zoneIds, objective.Type.ToString() + ".safeZone");
                 break;
         }
+    }
+
+    private static void ValidateConnectivity(Scenario scenario, HashSet<string> zoneIds)
+    {
+        if (scenario.Zones.Count <= 1)
+            return;
+
+        var adjacency = scenario.Zones.ToDictionary(
+            z => z.Id,
+            z => z.TravelMinutes.Keys.Where(zoneIds.Contains).ToList(),
+            StringComparer.Ordinal);
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>();
+        var start = scenario.Zones[0].Id;
+        visited.Add(start);
+        queue.Enqueue(start);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var neighbor in adjacency[current])
+            {
+                if (visited.Add(neighbor))
+                    queue.Enqueue(neighbor);
+            }
+        }
+
+        if (visited.Count != scenario.Zones.Count)
+            throw new ContentValidationException($"Scenario '{scenario.Id}': graph must be connected.");
     }
 
     private static void RequireZoneRef(string scenarioId, string? zoneId, HashSet<string> zoneIds, string context)
@@ -308,110 +428,6 @@ public sealed class ContentLoader
     {
         if (string.IsNullOrWhiteSpace(unitId) || !unitIds.Contains(unitId))
             throw new ContentValidationException($"Scenario '{scenarioId}': {context} references unknown unit '{unitId}'.");
-    }
-
-    private static void ValidateZoneEdgeTypes(string scenarioId, Zone zone, JsonElement zoneRaw, HashSet<string> zoneIds)
-    {
-        if (!TryGetPropertyIgnoreCase(zoneRaw, "edgeTypes", out var edgeTypes) || edgeTypes.ValueKind != JsonValueKind.Object)
-            return;
-        foreach (var prop in edgeTypes.EnumerateObject())
-        {
-            if (!zoneIds.Contains(prop.Name))
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zone.Id}' edgeTypes references unknown zone '{prop.Name}'.");
-            if (prop.Value.ValueKind != JsonValueKind.String)
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zone.Id}' edgeType for '{prop.Name}' must be a string.");
-            ValidateEnumString(prop.Value.GetString(), EdgeTypes, $"Scenario '{scenarioId}': zone '{zone.Id}' edgeType '{prop.Name}'");
-        }
-    }
-
-    private static void ValidateZoneObjects(string scenarioId, string zoneId, JsonElement zoneRaw, HashSet<string> objectIds)
-    {
-        if (!TryGetPropertyIgnoreCase(zoneRaw, "objects", out var objects) || objects.ValueKind != JsonValueKind.Array)
-            return;
-        foreach (var obj in objects.EnumerateArray())
-        {
-            if (obj.ValueKind != JsonValueKind.Object)
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zoneId}' has invalid object entry.");
-            if (!TryGetPropertyIgnoreCase(obj, "id", out var idEl) || idEl.ValueKind != JsonValueKind.String)
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zoneId}' object id is required.");
-            var id = idEl.GetString();
-            if (string.IsNullOrWhiteSpace(id))
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zoneId}' object id is required.");
-            if (!objectIds.Add(id))
-                throw new ContentValidationException($"Scenario '{scenarioId}': duplicate object id '{id}'.");
-            if (TryGetPropertyIgnoreCase(obj, "kind", out var kindEl) && kindEl.ValueKind == JsonValueKind.String)
-                ValidateEnumString(kindEl.GetString(), ZoneObjectKinds, $"Scenario '{scenarioId}': zone '{zoneId}' object '{id}' kind");
-        }
-    }
-
-    private static void ValidateZoneCargo(string scenarioId, string zoneId, JsonElement zoneRaw)
-    {
-        if (!TryGetPropertyIgnoreCase(zoneRaw, "cargo", out var cargoArr) || cargoArr.ValueKind != JsonValueKind.Array)
-            return;
-        foreach (var cargo in cargoArr.EnumerateArray())
-        {
-            if (cargo.ValueKind != JsonValueKind.Object)
-                throw new ContentValidationException($"Scenario '{scenarioId}': zone '{zoneId}' has invalid cargo entry.");
-            if (TryGetPropertyIgnoreCase(cargo, "type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
-                ValidateEnumString(typeEl.GetString(), CargoTypes, $"Scenario '{scenarioId}': zone '{zoneId}' cargo type");
-            if (TryGetPropertyIgnoreCase(cargo, "owner", out var ownerEl) && ownerEl.ValueKind == JsonValueKind.String)
-                ValidateEnumString(ownerEl.GetString(), Factions, $"Scenario '{scenarioId}': zone '{zoneId}' cargo owner");
-            ValidateNonNegativeNumberField(cargo, "amount", $"Scenario '{scenarioId}': zone '{zoneId}' cargo amount");
-        }
-    }
-
-    private static void ValidateZoneControllingFactionAndCover(string scenarioId, string zoneId, JsonElement zoneRaw)
-    {
-        if (TryGetPropertyIgnoreCase(zoneRaw, "controllingFaction", out var cf) && cf.ValueKind == JsonValueKind.String)
-            ValidateEnumString(cf.GetString(), Factions, $"Scenario '{scenarioId}': zone '{zoneId}' controllingFaction");
-        ValidateNonNegativeNumberField(zoneRaw, "cover", $"Scenario '{scenarioId}': zone '{zoneId}' cover");
-    }
-
-    private static void ValidateZoneEdgesSymmetryFromModel(Scenario scenario, Zone zone)
-    {
-        foreach (var neighbor in zone.TravelMinutes.Keys)
-        {
-            if (!scenario.Zones.Any(z => z.Id == neighbor))
-                throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' references unknown neighbor '{neighbor}'.");
-        }
-    }
-
-    private static void ValidateEdgeSymmetryFromModel(Scenario scenario)
-    {
-        var zoneMap = scenario.Zones.ToDictionary(z => z.Id, StringComparer.Ordinal);
-        foreach (var zone in scenario.Zones)
-        {
-            foreach (var (neighbor, minutes) in zone.TravelMinutes)
-            {
-                if (!zoneMap.TryGetValue(neighbor, out var other))
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': zone '{zone.Id}' references unknown neighbor '{neighbor}'.");
-                if (!other.TravelMinutes.TryGetValue(zone.Id, out var backMinutes))
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' -> '{neighbor}' is not symmetric (missing reverse edge).");
-                if (backMinutes <= 0)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{neighbor}' -> '{zone.Id}' must be > 0.");
-                if (backMinutes != minutes)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edge '{zone.Id}' <-> '{neighbor}' has asymmetric travelMinutes ({minutes} != {backMinutes}).");
-            }
-        }
-    }
-
-    private static void ValidateEdgeTypesSymmetryFromRaw(Scenario scenario, Dictionary<string, JsonElement> zoneRawMap)
-    {
-        foreach (var (zoneId, zr) in zoneRawMap)
-        {
-            if (!TryGetPropertyIgnoreCase(zr, "edgeTypes", out var edgeTypes) || edgeTypes.ValueKind != JsonValueKind.Object)
-                continue;
-            foreach (var prop in edgeTypes.EnumerateObject())
-            {
-                var neighbor = prop.Name;
-                if (!zoneRawMap.TryGetValue(neighbor, out var nr) || !TryGetPropertyIgnoreCase(nr, "edgeTypes", out var nTypes) || nTypes.ValueKind != JsonValueKind.Object)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edgeTypes '{zoneId}' -> '{neighbor}' is not symmetric.");
-                if (!TryGetPropertyIgnoreCase(nTypes, zoneId, out var back) || back.ValueKind != JsonValueKind.String || prop.Value.ValueKind != JsonValueKind.String)
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edgeTypes '{zoneId}' <-> '{neighbor}' is not symmetric.");
-                if (!string.Equals(back.GetString(), prop.Value.GetString(), StringComparison.OrdinalIgnoreCase))
-                    throw new ContentValidationException($"Scenario '{scenario.Id}': edgeTypes '{zoneId}' <-> '{neighbor}' are inconsistent.");
-            }
-        }
     }
 
     private static void ValidateFriction(FrictionTable f)
@@ -574,43 +590,6 @@ public sealed class ContentLoader
         return set;
     }
 
-    private static Dictionary<string, JsonElement> BuildRawMap(JsonElement root, string propertyName)
-    {
-        var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        if (!TryGetPropertyIgnoreCase(root, propertyName, out var arr) || arr.ValueKind != JsonValueKind.Array)
-            return map;
-        foreach (var item in arr.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-                continue;
-            if (!TryGetPropertyIgnoreCase(item, "id", out var idEl) || idEl.ValueKind != JsonValueKind.String)
-                continue;
-            var id = idEl.GetString();
-            if (string.IsNullOrWhiteSpace(id))
-                continue;
-            if (!map.TryAdd(id, item))
-                throw new ContentValidationException($"Duplicate id '{id}' in '{propertyName}'.");
-        }
-        return map;
-    }
-
-    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-            }
-        }
-        value = default;
-        return false;
-    }
-
     private static void ValidateEnumString(string? value, HashSet<string> allowed, string path, bool allowOther = false)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -641,40 +620,6 @@ public sealed class ContentLoader
     {
         if (value <= 0)
             throw new ContentValidationException($"{path} must be > 0 (actual {value}).");
-    }
-
-    private static void ValidateNonNegative(int value, string path)
-    {
-        if (value < 0)
-            throw new ContentValidationException($"{path} must be >= 0 (actual {value}).");
-    }
-
-    private static void ValidateNonNegativeIntField(JsonElement element, string field, string path)
-    {
-        if (!TryGetPropertyIgnoreCase(element, field, out var v))
-            return;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
-        {
-            if (i < 0)
-                throw new ContentValidationException($"{path} must be >= 0.");
-            return;
-        }
-        if (v.ValueKind != JsonValueKind.Null)
-            throw new ContentValidationException($"{path} must be a non-negative integer.");
-    }
-
-    private static void ValidateNonNegativeNumberField(JsonElement element, string field, string path)
-    {
-        if (!TryGetPropertyIgnoreCase(element, field, out var v))
-            return;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d))
-        {
-            if (double.IsNaN(d) || double.IsInfinity(d) || d < 0)
-                throw new ContentValidationException($"{path} must be >= 0.");
-            return;
-        }
-        if (v.ValueKind != JsonValueKind.Null)
-            throw new ContentValidationException($"{path} must be a non-negative number.");
     }
 
     private static bool IsProbability(double value) => !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0 && value <= 1;
